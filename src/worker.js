@@ -251,6 +251,8 @@ async function ownerAction(env,path,body){
   const trades=await db.prepare('SELECT t.id,t.player_id,p.name AS player_name,t.side,t.quantity,t.price,t.total,t.created FROM investor_trades t LEFT JOIN players p ON p.id=t.player_id WHERE t.account_id=? ORDER BY t.id DESC LIMIT 300').bind(owner.id).all();
   const ledger=await db.prepare('SELECT amount,balance_after,reason,created FROM investor_ledger WHERE account_id=? ORDER BY id DESC LIMIT 100').bind(owner.id).all();
   await marketSchema(db);
+  const initial=await db.prepare('SELECT 1 AS exists_row FROM portfolio_snapshots WHERE account_id=? LIMIT 1').bind(owner.id).first();
+  if(!initial)await snapshotAccount(db,owner.id,'최초 자산 기준점');
   const history=await db.prepare('SELECT created,cash,holdings_value,total_value,reason FROM portfolio_snapshots WHERE account_id=? ORDER BY id DESC LIMIT 240').bind(owner.id).all();
   return {ok:true,account:owner,holdings:data.holdings.filter(x=>x.account_id===owner.id),trades:trades.results,ledger:ledger.results,history:history.results.reverse()};
  }
