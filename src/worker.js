@@ -172,6 +172,8 @@ async function investorAction(env,path,body){
   return {ok:true};
  }
  if(path==='/api/investors/trade'){
+  const halt=await db.prepare("SELECT v FROM settings WHERE k='market_halt'").first();
+  if(halt?.v==='1')throw Error('현재 시장 거래가 일시 중지되었습니다');
   const playerId=String(body.player_id||'');
   const player=await db.prepare('SELECT id,name,price FROM players WHERE id=?').bind(playerId).first();
   if(!player)throw Error('상장된 선수가 아닙니다');
@@ -214,7 +216,9 @@ async function ownerAction(env,path,body){
  const db=env.DB,owner=await ownerAccount(db);
  if(path==='/api/owner/state'){
   const data=await investors(db);
-  return {ok:true,account:owner,holdings:data.holdings.filter(x=>x.account_id===owner.id),trades:data.trades.filter(x=>x.nickname===OWNER_NICK)};
+  const trades=await db.prepare('SELECT t.id,t.player_id,p.name AS player_name,t.side,t.quantity,t.price,t.total,t.created FROM investor_trades t LEFT JOIN players p ON p.id=t.player_id WHERE t.account_id=? ORDER BY t.id DESC LIMIT 300').bind(owner.id).all();
+  const ledger=await db.prepare('SELECT amount,balance_after,reason,created FROM investor_ledger WHERE account_id=? ORDER BY id DESC LIMIT 100').bind(owner.id).all();
+  return {ok:true,account:owner,holdings:data.holdings.filter(x=>x.account_id===owner.id),trades:trades.results,ledger:ledger.results};
  }
  if(path==='/api/owner/fund'){
   const amount=Number(body.amount);
@@ -233,10 +237,10 @@ export default {
  const url=new URL(request.url),path=url.pathname;
  try{
   if(path==='/api/state'&&request.method==='GET'){
-   const [p,t,last,error]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first()]);
+   const [p,t,last,error,halt]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first(),env.DB.prepare("SELECT v FROM settings WHERE k='market_halt'").first()]);
    const queue=await env.DB.prepare("SELECT name,q.status,q.last_checked,q.last_error,q.applied FROM sync_queue q JOIN players p ON p.id=q.player ORDER BY p.name").all().catch(()=>({results:[]}));
    const completed=queue.results.filter(x=>x.status==='done').length;
-   return J({players:p.results,ticks:t.results,connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed,queue:queue.results}});
+   return J({players:p.results,ticks:t.results,market_halted:halt?.v==='1',connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed,queue:queue.results}});
   }
   if(path==='/api/health'&&request.method==='GET')return J({ok:true,bindings:{db:!!env.DB,assets:!!env.ASSETS,admin_token:!!env.ADMIN_TOKEN,admin_password:!!env.ADMIN_PASSWORD,pubg_api_key:!!env.PUBG_API_KEY},deployment:'auth-diagnostics-v1'});
   if(path.startsWith('/api/')&&request.method==='POST'){
@@ -252,6 +256,7 @@ export default {
    if(path==='/api/players')return J({ok:true,...await register(env,String(body.name||'').trim(),String(body.platform||'steam'))});
    if(path==='/api/sync')return J({ok:true,status:await sync(env)});
    if(path==='/api/delete'){await env.DB.prepare('DELETE FROM players WHERE id=?').bind(body.id).run();return J({ok:true});}
+   if(path==='/api/market/halt'){const halted=body.halted===true;await env.DB.prepare("INSERT INTO settings(k,v) VALUES('market_halt',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(halted?'1':'0').run();return J({ok:true,market_halted:halted});}
    if(path==='/api/settings'){const w=Number(body.rp_weight);if(!Number.isFinite(w)||w<0||w>100)throw Error('RP 비중은 0~100');await env.DB.prepare("INSERT INTO settings(k,v) VALUES('rp_weight',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(w)).run();return J({ok:true});}
   }
   if(path==='/admin'||path==='/overlay')return env.ASSETS.fetch(new Request(new URL(`${path}.html`,url),request));
