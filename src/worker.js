@@ -194,7 +194,7 @@ async function investorAction(env,path,body){
   }else{
    const costRemoved=Math.round(Number(holding.cost_basis)*quantity/Number(holding.quantity));
    await db.batch([
-    db.prepare('INSERT INTO investor_holdings(account_id,player_id,quantity,cost_basis) VALUES(?,?,?,0) ON CONFLICT(account_id,player_id) DO UPDATE SET quantity=quantity+excluded.quantity,cost_basis=MAX(0,cost_basis-?)').bind(accountId,playerId,-quantity,costRemoved),
+    db.prepare('UPDATE investor_holdings SET quantity=quantity-?,cost_basis=MAX(0,cost_basis-?) WHERE account_id=? AND player_id=? AND quantity>=?').bind(quantity,costRemoved,accountId,playerId,quantity),
     db.prepare('UPDATE investor_accounts SET balance=balance+? WHERE id=?').bind(total,accountId),
     db.prepare('INSERT INTO investor_trades(account_id,player_id,side,quantity,price,total,created) VALUES(?,?,?,?,?,?,?)').bind(accountId,playerId,side,quantity,player.price,total,now)
    ]);
