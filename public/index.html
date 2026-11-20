@@ -182,7 +182,8 @@ function drawMarketPages(){
  $('#sidebarRecent').innerHTML=readIds(recentKey).map(id=>ps.find(p=>p.id===id)).filter(Boolean).map(sidebarRow).join('')||'<p class="sub">최근 본 종목이 없습니다.</p>';
  $('#sidebarSummary').textContent='상장 '+ps.length+'명 · '+(market.market_halted?'거래 일시정지':'거래 운영 중');
  $('#tickerContent').textContent='쪼사 종합지수 '+(ps.length?fmt(idx.toFixed(2)):'—')+'　 ·　 상장 '+ps.length+'명　 ·　 상승 '+ps.filter(p=>latestChange(p)>0).length+'명　 ·　 하락 '+ps.filter(p=>latestChange(p)<0).length+'명　 ·　 실제 현금 거래 없음';
- const indexHistory=market.ticks.slice(0,40).reverse().map((t,i)=>({x:i,y:Number(t.price||10000)}));if(indexHistory.length>1){const lo=Math.min(...indexHistory.map(x=>x.y)),hi=Math.max(...indexHistory.map(x=>x.y));$('#indexSpark').innerHTML='<polyline points="'+indexHistory.map((v,i)=>(i*280/(indexHistory.length-1))+','+(75-(v.y-lo)/(hi-lo||1)*65)).join(' ')+'" stroke="#3186f5" stroke-width="2" fill="none"/>'}else $('#indexSpark').innerHTML='';
+ // No synthetic index history: show a neutral baseline until aggregate index snapshots exist.
+ $('#indexSpark').innerHTML='<line x1="0" y1="65" x2="280" y2="65" stroke="#c8d7ec" stroke-width="2" stroke-dasharray="4 5"/>';
  document.querySelectorAll('[data-preview-id]').forEach(b=>b.onclick=()=>previewPlayer(b.dataset.previewId));
  document.querySelectorAll('[data-fav-id]').forEach(b=>b.onclick=()=>toggleFavorite(b.dataset.favId));
  wireMarketRows();
