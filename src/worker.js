@@ -96,6 +96,7 @@ export default {async fetch(request,env){
    if(request.headers.get('X-Admin-Token')!==env.ADMIN_TOKEN)return J({error:'관리자 토큰이 올바르지 않습니다'},403);
    if(Number(request.headers.get('content-length')||0)>10000)return J({error:'요청이 너무 큽니다'},413);
    const body=await request.json().catch(()=>({}));
+   if(path==='/api/auth/check')return J({ok:true,message:'관리자 인증 성공'});
    if(path==='/api/players')return J({ok:true,id:await register(env,String(body.name||'').trim(),String(body.platform||'steam'))});
    if(path==='/api/sync')return J({ok:true,status:await sync(env)});
    if(path==='/api/delete'){await env.DB.prepare('DELETE FROM players WHERE id=?').bind(body.id).run();return J({ok:true});}
