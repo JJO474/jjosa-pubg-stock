@@ -62,15 +62,20 @@ async function pollPlayer(env,p){
   const m=await pubg(env,p.platform,`matches/${encodeURIComponent(id)}`);
   const attrs=m.data?.attributes||{};
   const stats=m.included?.filter(x=>x.type==='participant').map(x=>x.attributes?.stats).find(x=>x?.playerId===p.id);
-  if(stats&&String(attrs.matchType||'').toLowerCase()==='competitive'){
+  const matchType=String(attrs.matchType||'').toLowerCase();
+  // PUBG API: competitive=ranked, official=normal. Ignore custom/arcade/AI matches.
+  const isRanked=matchType==='competitive',isNormal=matchType==='official';
+  if(stats&&(isRanked||isNormal)){
    const kills=Number(stats.kills||0),damage=Number(stats.damageDealt||0),rank=Number(stats.winPlace||16);
    const perf=clamp(kills*.8+damage/200+(rank===1?3:rank<=5?1:rank>=13?-3:rank>=9?-1:0)-3,-10,10);
    const row=await env.DB.prepare('SELECT price FROM players WHERE id=?').bind(p.id).first();
    const w=await env.DB.prepare("SELECT v FROM settings WHERE k='rp_weight'").first();
-   const pct=clamp(perf*(1-Number(w?.v??50)/100),-10,10);
+   // Ranked retains the existing RP/performance split. Normal matches have no RP:
+   // apply a reduced 50%-strength performance change to limit farming volatility.
+   const pct=clamp(isRanked?perf*(1-Number(w?.v??50)/100):perf*0.5,-10,10);
    const price=Math.max(100,Math.round(row.price*(1+pct/100)));
    await env.DB.batch([
-    env.DB.prepare('INSERT OR IGNORE INTO ticks(player,match_id,created,price,change_pct,kills,damage,rank,reason) VALUES(?,?,?,?,?,?,?,?,?)').bind(p.id,id,attrs.createdAt||stamp(),price,pct,kills,damage,rank,'경쟁전 경기'),
+    env.DB.prepare('INSERT OR IGNORE INTO ticks(player,match_id,created,price,change_pct,kills,damage,rank,reason) VALUES(?,?,?,?,?,?,?,?,?)').bind(p.id,id,attrs.createdAt||stamp(),price,pct,kills,damage,rank,isRanked?'경쟁전 경기':'일반전 경기'),
     env.DB.prepare('UPDATE players SET price=?,updated=? WHERE id=?').bind(price,stamp(),p.id),
     env.DB.prepare('INSERT OR IGNORE INTO processed(player,match_id) VALUES(?,?)').bind(p.id,id)
    ]);applied++;
