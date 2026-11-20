@@ -133,6 +133,36 @@ async function sync(env){
  return {checked,applied,pending:stats.pending||0,failed:stats.error||0,completed:stats.done||0};
 }
 
+
+async function marketSchema(db){
+ await db.batch([
+ db.prepare("CREATE TABLE IF NOT EXISTS portfolio_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,account_id INTEGER NOT NULL,created TEXT NOT NULL,cash INTEGER NOT NULL,holdings_value INTEGER NOT NULL,total_value INTEGER NOT NULL,reason TEXT NOT NULL)"),
+ db.prepare("CREATE INDEX IF NOT EXISTS idx_portfolio_account ON portfolio_snapshots(account_id,id)"),
+ db.prepare("CREATE TABLE IF NOT EXISTS market_notices(id INTEGER PRIMARY KEY AUTOINCREMENT,created TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,category TEXT NOT NULL DEFAULT '공지')")
+ ]);
+}
+async function snapshotAccount(db,accountId,reason){
+ await marketSchema(db);
+ const a=await db.prepare("SELECT balance FROM investor_accounts WHERE id=?").bind(accountId).first();if(!a)return;
+ const h=await db.prepare("SELECT COALESCE(SUM(h.quantity*p.price),0) AS value FROM investor_holdings h JOIN players p ON p.id=h.player_id WHERE h.account_id=? AND h.quantity>0").bind(accountId).first();
+ const cash=Number(a.balance),value=Number(h?.value||0);
+ await db.prepare("INSERT INTO portfolio_snapshots(account_id,created,cash,holdings_value,total_value,reason) VALUES(?,?,?,?,?,?)").bind(accountId,stamp(),cash,value,cash+value,reason).run();
+}
+async function marketStats(db){
+ await tradeSchema(db);await marketSchema(db);
+ const [volume,notices,top]=await Promise.all([
+  db.prepare("SELECT player_id,COUNT(*) AS trades,COALESCE(SUM(quantity),0) AS volume,COALESCE(SUM(total),0) AS turnover FROM investor_trades GROUP BY player_id ORDER BY turnover DESC LIMIT 300").all(),
+  db.prepare("SELECT id,created,title,body,category FROM market_notices ORDER BY id DESC LIMIT 30").all(),
+  db.prepare("SELECT p.id,p.name,COALESCE(v.trades,0) AS trades,COALESCE(v.volume,0) AS volume,COALESCE(v.turnover,0) AS turnover FROM players p LEFT JOIN (SELECT player_id,COUNT(*) AS trades,SUM(quantity) AS volume,SUM(total) AS turnover FROM investor_trades GROUP BY player_id) v ON v.player_id=p.id ORDER BY turnover DESC LIMIT 20").all()
+ ]);
+ return {volume:volume.results,notices:notices.results,top:top.results};
+}
+function tickNews(t,p){
+ const pct=Number(t.change_pct||0),reason=String(t.reason||'주가 반영');
+ const detail=t.kills!=null?`${t.kills}킬 · ${Math.round(t.damage||0)}딜 · ${t.rank||'—'}위`:t.rp_delta!=null?`RP ${t.rp_delta>0?'+':''}${t.rp_delta}`:'';
+ return {created:t.created,category:'경기 속보',player:t.player,title:`${p?.name||'선수'} ${reason}, 주가 ${pct>=0?'상승':'하락'} ${Math.abs(pct).toFixed(2)}%`,body:`${detail} · 반영 주가 ${Number(t.price).toLocaleString('ko-KR')} P`};
+}
+
 async function tradeSchema(db){
  await db.batch([
   db.prepare("CREATE TABLE IF NOT EXISTS investor_accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, nickname TEXT NOT NULL UNIQUE COLLATE NOCASE, balance INTEGER NOT NULL DEFAULT 0 CHECK(balance>=0), created TEXT NOT NULL)"),
@@ -169,6 +199,7 @@ async function investorAction(env,path,body){
    db.prepare('UPDATE investor_accounts SET balance=balance+? WHERE id=?').bind(amount,accountId),
    db.prepare('INSERT INTO investor_ledger(account_id,amount,balance_after,reason,created) VALUES(?,?,(SELECT balance FROM investor_accounts WHERE id=?),?,?)').bind(accountId,amount,accountId,'스트리머 지급',stamp())
   ]);
+  await snapshotAccount(db,accountId,'포인트 지급');
   return {ok:true};
  }
  if(path==='/api/investors/trade'){
@@ -201,6 +232,7 @@ async function investorAction(env,path,body){
     db.prepare('INSERT INTO investor_trades(account_id,player_id,side,quantity,price,total,created) VALUES(?,?,?,?,?,?,?)').bind(accountId,playerId,side,quantity,player.price,total,now)
    ]);
   }
+  await snapshotAccount(db,accountId,side==='buy'?'주식 매수':'주식 매도');
   return {ok:true,price:player.price,total};
  }
  throw Error('알 수 없는 거래 요청');
@@ -218,7 +250,9 @@ async function ownerAction(env,path,body){
   const data=await investors(db);
   const trades=await db.prepare('SELECT t.id,t.player_id,p.name AS player_name,t.side,t.quantity,t.price,t.total,t.created FROM investor_trades t LEFT JOIN players p ON p.id=t.player_id WHERE t.account_id=? ORDER BY t.id DESC LIMIT 300').bind(owner.id).all();
   const ledger=await db.prepare('SELECT amount,balance_after,reason,created FROM investor_ledger WHERE account_id=? ORDER BY id DESC LIMIT 100').bind(owner.id).all();
-  return {ok:true,account:owner,holdings:data.holdings.filter(x=>x.account_id===owner.id),trades:trades.results,ledger:ledger.results};
+  await marketSchema(db);
+  const history=await db.prepare('SELECT created,cash,holdings_value,total_value,reason FROM portfolio_snapshots WHERE account_id=? ORDER BY id DESC LIMIT 240').bind(owner.id).all();
+  return {ok:true,account:owner,holdings:data.holdings.filter(x=>x.account_id===owner.id),trades:trades.results,ledger:ledger.results,history:history.results.reverse()};
  }
  if(path==='/api/owner/fund'){
   const amount=Number(body.amount);
@@ -242,6 +276,11 @@ export default {
    const completed=queue.results.filter(x=>x.status==='done').length;
    return J({players:p.results,ticks:t.results,market_halted:halt?.v==='1',connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed,queue:queue.results}});
   }
+  if(path==='/api/market/overview'&&request.method==='GET'){
+   const stats=await marketStats(env.DB);
+   const ticks=await env.DB.prepare('SELECT t.*,p.name FROM ticks t JOIN players p ON p.id=t.player ORDER BY t.id DESC LIMIT 80').all();
+   return J({...stats,news:ticks.results.map(t=>tickNews(t,{name:t.name})),generated_at:stamp()});
+  }
   if(path==='/api/health'&&request.method==='GET')return J({ok:true,bindings:{db:!!env.DB,assets:!!env.ASSETS,admin_token:!!env.ADMIN_TOKEN,admin_password:!!env.ADMIN_PASSWORD,pubg_api_key:!!env.PUBG_API_KEY},deployment:'auth-diagnostics-v1'});
   if(path.startsWith('/api/')&&request.method==='POST'){
    const adminCredential=env.ADMIN_TOKEN||env.ADMIN_PASSWORD;
@@ -256,6 +295,7 @@ export default {
    if(path==='/api/players')return J({ok:true,...await register(env,String(body.name||'').trim(),String(body.platform||'steam'))});
    if(path==='/api/sync')return J({ok:true,status:await sync(env)});
    if(path==='/api/delete'){await env.DB.prepare('DELETE FROM players WHERE id=?').bind(body.id).run();return J({ok:true});}
+   if(path==='/api/market/notice'){await marketSchema(env.DB);const title=String(body.title||'').trim(),content=String(body.body||'').trim();if(!title||title.length>100||content.length>1000)throw Error('공시 제목(1~100자)과 내용(최대 1000자)을 입력하세요');await env.DB.prepare('INSERT INTO market_notices(created,title,body,category) VALUES(?,?,?,?)').bind(stamp(),title,content,'운영 공시').run();return J({ok:true});}
    if(path==='/api/market/halt'){const halted=body.halted===true;await env.DB.prepare("INSERT INTO settings(k,v) VALUES('market_halt',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(halted?'1':'0').run();return J({ok:true,market_halted:halted});}
    if(path==='/api/settings'){const w=Number(body.rp_weight);if(!Number.isFinite(w)||w<0||w>100)throw Error('RP 비중은 0~100');await env.DB.prepare("INSERT INTO settings(k,v) VALUES('rp_weight',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(w)).run();return J({ok:true});}
   }
