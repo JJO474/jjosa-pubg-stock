@@ -199,6 +199,29 @@ async function investorAction(env,path,body){
  throw Error('알 수 없는 거래 요청');
 }
 
+const OWNER_NICK='__JJOSA_OWNER_ONLY__';
+async function ownerAccount(db){
+ await tradeSchema(db);
+ await db.prepare('INSERT OR IGNORE INTO investor_accounts(nickname,balance,created) VALUES(?,?,?)').bind(OWNER_NICK,1000000,stamp()).run();
+ return db.prepare('SELECT id,nickname,balance FROM investor_accounts WHERE nickname=?').bind(OWNER_NICK).first();
+}
+async function ownerAction(env,path,body){
+ const db=env.DB,owner=await ownerAccount(db);
+ if(path==='/api/owner/state'){
+  const data=await investors(db);
+  return {ok:true,account:owner,holdings:data.holdings.filter(x=>x.account_id===owner.id),trades:data.trades.filter(x=>x.nickname===OWNER_NICK)};
+ }
+ if(path==='/api/owner/fund'){
+  const amount=Number(body.amount);
+  if(!Number.isSafeInteger(amount)||amount<1||amount>1000000000)throw Error('충전 금액은 1~10억 P');
+  return investorAction(env,'/api/investors/grant',{account_id:owner.id,amount});
+ }
+ if(path==='/api/owner/trade'){
+  return investorAction(env,'/api/investors/trade',{...body,account_id:owner.id});
+ }
+ throw Error('지원하지 않는 요청');
+}
+
 export default {
  async scheduled(event,env,ctx){ctx.waitUntil(sync(env).catch(async e=>{try{await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message||e)).run()}catch(_){}}));},
  async fetch(request,env){
@@ -210,10 +233,6 @@ export default {
    const completed=queue.results.filter(x=>x.status==='done').length;
    return J({players:p.results,ticks:t.results,connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed,queue:queue.results}});
   }
-  if(path==='/api/investors/public'&&request.method==='GET'){
-   const data=await investors(env.DB);
-   return J({accounts:data.accounts.map(a=>({nickname:a.nickname,total:a.balance+data.holdings.filter(h=>h.account_id===a.id).reduce((sum,h)=>sum+h.quantity*h.price,0)})).sort((a,b)=>b.total-a.total).slice(0,100)});
-  }
   if(path==='/api/health'&&request.method==='GET')return J({ok:true,bindings:{db:!!env.DB,assets:!!env.ASSETS,admin_token:!!env.ADMIN_TOKEN,admin_password:!!env.ADMIN_PASSWORD,pubg_api_key:!!env.PUBG_API_KEY},deployment:'auth-diagnostics-v1'});
   if(path.startsWith('/api/')&&request.method==='POST'){
    const adminCredential=env.ADMIN_TOKEN||env.ADMIN_PASSWORD;
@@ -221,8 +240,9 @@ export default {
    if(request.headers.get('X-Admin-Token')!==adminCredential)return J({error:'관리자 인증값이 올바르지 않습니다'},403);
    if(Number(request.headers.get('content-length')||0)>10000)return J({error:'요청이 너무 큽니다'},413);
    const body=await request.json().catch(()=>({}));
-   if(path==='/api/investors/list')return J({ok:true,...await investors(env.DB)});
-   if(['/api/investors/create','/api/investors/grant','/api/investors/trade'].includes(path))return J(await investorAction(env,path,body));
+   if(['/api/owner/state','/api/owner/fund','/api/owner/trade'].includes(path))return J(await ownerAction(env,path,body));
+   if(path.startsWith('/api/investors/'))return J({error:'시청자 거래 기능이 비활성화되었습니다'},403);
+
    if(path==='/api/auth/check')return J({ok:true,message:'관리자 인증 성공'});
    if(path==='/api/players')return J({ok:true,...await register(env,String(body.name||'').trim(),String(body.platform||'steam'))});
    if(path==='/api/sync')return J({ok:true,status:await sync(env)});
