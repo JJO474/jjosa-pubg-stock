@@ -10,7 +10,7 @@ async function pubg(env,platform,path){
   arr.push(now);
   await env.DB.prepare("INSERT INTO meta(k,v) VALUES('api_gate',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(arr)).run();
   const res=await fetch(`https://api.pubg.com/shards/${platform}/${path}`,{headers:{Authorization:`Bearer ${env.PUBG_API_KEY}`,Accept:'application/vnd.api+json','User-Agent':'JJOSAStock/3.0'}});
-  if(!res.ok)throw Error(`PUBG API ${res.status}`);
+  if(!res.ok){const detail=res.status===401?'PUBG API 키가 유효하지 않습니다':res.status===403?'PUBG API 접근 권한이 없습니다':res.status===404?'선수를 찾지 못했습니다. 플랫폼과 닉네임을 확인해 주세요':res.status===429?'PUBG API 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요':`PUBG API 응답 오류 (${res.status})`;throw Error(detail)}
   return res.json();
 }
 async function ranked(env,p){
@@ -24,14 +24,26 @@ async function register(env,name,platform){
  if(!['steam','kakao'].includes(platform))throw Error('steam 또는 kakao 플랫폼만 지원합니다');
  if(!name||name.length>64)throw Error('닉네임을 입력해 주세요');
  const d=await pubg(env,platform,`players?filter[playerNames]=${encodeURIComponent(name)}`);
- const p=d.data?.[0];if(!p)throw Error('선수를 찾지 못했습니다');
+ const p=d.data?.[0];if(!p)throw Error('선수를 찾지 못했습니다. 플랫폼과 닉네임을 확인해 주세요');
  if(await env.DB.prepare('SELECT id FROM players WHERE id=?').bind(p.id).first())throw Error('이미 등록된 선수입니다');
- const r=await ranked(env,{id:p.id,platform});
- await env.DB.prepare('INSERT INTO players(id,name,platform,rp,season,updated,created) VALUES(?,?,?,?,?,?,?)').bind(p.id,p.attributes?.name||name,platform,r.rp,r.season,stamp(),stamp()).run();
+ // Register the verified account first. Ranked stats are optional and can be
+ // temporarily unavailable or rate-limited; they must not block registration.
+ const now=stamp();
+ await env.DB.prepare('INSERT INTO players(id,name,platform,rp,season,updated,created) VALUES(?,?,?,?,?,?,?)').bind(p.id,p.attributes?.name||name,platform,null,null,now,now).run();
  const ids=p.relationships?.matches?.data||[];
- for(const m of ids)await env.DB.prepare('INSERT OR IGNORE INTO processed(player,match_id) VALUES(?,?)').bind(p.id,m.id).run();
- if(r.rp!=null)await env.DB.prepare('INSERT INTO snapshots(player,created,season,rp) VALUES(?,?,?,?)').bind(p.id,stamp(),r.season,r.rp).run();
- return p.id;
+ if(ids.length){
+  for(let i=0;i<ids.length;i+=40){
+   await env.DB.batch(ids.slice(i,i+40).map(m=>env.DB.prepare('INSERT OR IGNORE INTO processed(player,match_id) VALUES(?,?)').bind(p.id,m.id)));
+  }
+ }
+ let rankedStatus='pending';
+ try{
+  const r=await ranked(env,{id:p.id,platform});
+  await env.DB.prepare('UPDATE players SET rp=?,season=? WHERE id=?').bind(r.rp,r.season,p.id).run();
+  if(r.rp!=null)await env.DB.prepare('INSERT INTO snapshots(player,created,season,rp) VALUES(?,?,?,?)').bind(p.id,now,r.season,r.rp).run();
+  rankedStatus=r.rp==null?'unavailable':'ok';
+ }catch(e){rankedStatus='pending';}
+ return {id:p.id,rankedStatus};
 }
 async function pollPlayer(env,p){
  const d=await pubg(env,p.platform,`players/${encodeURIComponent(p.id)}`);
@@ -101,7 +113,7 @@ export default {
    if(Number(request.headers.get('content-length')||0)>10000)return J({error:'요청이 너무 큽니다'},413);
    const body=await request.json().catch(()=>({}));
    if(path==='/api/auth/check')return J({ok:true,message:'관리자 인증 성공'});
-   if(path==='/api/players')return J({ok:true,id:await register(env,String(body.name||'').trim(),String(body.platform||'steam'))});
+   if(path==='/api/players')return J({ok:true,...await register(env,String(body.name||'').trim(),String(body.platform||'steam'))});
    if(path==='/api/sync')return J({ok:true,status:await sync(env)});
    if(path==='/api/delete'){await env.DB.prepare('DELETE FROM players WHERE id=?').bind(body.id).run();return J({ok:true});}
    if(path==='/api/settings'){const w=Number(body.rp_weight);if(!Number.isFinite(w)||w<0||w>100)throw Error('RP 비중은 0~100');await env.DB.prepare("INSERT INTO settings(k,v) VALUES('rp_weight',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(w)).run();return J({ok:true});}
