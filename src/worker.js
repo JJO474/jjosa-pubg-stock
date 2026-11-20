@@ -93,9 +93,11 @@ export default {
    const [p,t,last,error]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first()]);
    return J({players:p.results,ticks:t.results,connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed:0}});
   }
+  if(path==='/api/health'&&request.method==='GET')return J({ok:true,bindings:{db:!!env.DB,assets:!!env.ASSETS,admin_token:!!env.ADMIN_TOKEN,admin_password:!!env.ADMIN_PASSWORD,pubg_api_key:!!env.PUBG_API_KEY},deployment:'auth-diagnostics-v1'});
   if(path.startsWith('/api/')&&request.method==='POST'){
-   if(!env.ADMIN_TOKEN)return J({error:'ADMIN_TOKEN 비밀키가 설정되지 않았습니다'},403);
-   if(request.headers.get('X-Admin-Token')!==env.ADMIN_TOKEN)return J({error:'관리자 토큰이 올바르지 않습니다'},403);
+   const adminCredential=env.ADMIN_TOKEN||env.ADMIN_PASSWORD;
+   if(!adminCredential)return J({error:'관리자 인증키가 현재 실행 중인 Worker에 연결되지 않았습니다. /api/health 확인'},503);
+   if(request.headers.get('X-Admin-Token')!==adminCredential)return J({error:'관리자 인증값이 올바르지 않습니다'},403);
    if(Number(request.headers.get('content-length')||0)>10000)return J({error:'요청이 너무 큽니다'},413);
    const body=await request.json().catch(()=>({}));
    if(path==='/api/auth/check')return J({ok:true,message:'관리자 인증 성공'});
