@@ -94,13 +94,38 @@ async function pollPlayer(env,p){
  return {applied,remaining:Math.max(0,unseen.length-batch.length)};
 }
 async function sync(env){
- const now=Date.now();const prev=await env.DB.prepare("SELECT v FROM meta WHERE k='sync_started'").first();
- if(prev&&now-Number(prev.v)<60000)return 'cooldown';
- await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_started',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(now)).run();
- const rows=await env.DB.prepare('SELECT * FROM players ORDER BY COALESCE(updated,created) ASC LIMIT 1').all();
- if(!rows.results.length)return 'no_players';
- try{const result=await pollPlayer(env,rows.results[0]);await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_finished',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(stamp()).run();return result;}
- catch(e){await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message)).run();throw e;}
+ // Every five minutes, enqueue all listed players; a one-minute worker drains
+ // the queue within the shared PUBG API request budget.
+ const db=env.DB,now=Date.now(),cycle=Math.floor(now/300000);
+ await db.prepare("CREATE TABLE IF NOT EXISTS sync_queue (player TEXT PRIMARY KEY, cycle INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, last_checked TEXT, last_error TEXT, applied INTEGER NOT NULL DEFAULT 0)").run();
+ const prior=await db.prepare("SELECT v FROM meta WHERE k='sync_cycle'").first();
+ if(Number(prior?.v)!==cycle){
+  const players=await db.prepare('SELECT id FROM players').all();
+  if(players.results.length){
+   await db.batch(players.results.map(p=>db.prepare("INSERT INTO sync_queue(player,cycle,status,attempts,last_error) VALUES(?,?,'pending',0,NULL) ON CONFLICT(player) DO UPDATE SET cycle=excluded.cycle,status=CASE WHEN sync_queue.status='pending' THEN 'pending' ELSE 'pending' END,attempts=0,last_error=NULL").bind(p.id,cycle)));
+  }
+  await db.prepare("INSERT INTO meta(k,v) VALUES('sync_cycle',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(cycle)).run();
+ }
+ const pending=await db.prepare("SELECT q.player,p.* FROM sync_queue q JOIN players p ON p.id=q.player WHERE q.status='pending' ORDER BY q.last_checked IS NOT NULL,q.last_checked ASC,q.player LIMIT 2").all();
+ let checked=0,applied=0,failures=0;
+ for(const p of pending.results){
+  try{
+   const r=await pollPlayer(env,p);
+   checked++;applied+=r.applied;
+   await db.prepare("UPDATE sync_queue SET status='done',attempts=attempts+1,last_checked=?,last_error=NULL,applied=? WHERE player=?").bind(stamp(),r.applied,p.id).run();
+  }catch(e){
+   const msg=String(e.message||e);
+   if(msg.startsWith('API_RATE_LIMIT')||msg.includes('(429)'))break;
+   failures++;
+   await db.prepare("UPDATE sync_queue SET status='error',attempts=attempts+1,last_checked=?,last_error=? WHERE player=?").bind(stamp(),msg.slice(0,300),p.id).run();
+  }
+ }
+ const counts=await db.prepare("SELECT status,COUNT(*) AS n FROM sync_queue GROUP BY status").all();
+ const stats=Object.fromEntries(counts.results.map(x=>[x.status,x.n]));
+ await db.prepare("INSERT INTO meta(k,v) VALUES('sync_finished',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(stamp()).run();
+ if(failures)await db.prepare("INSERT INTO meta(k,v) VALUES('sync_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(failures+'명 조회 오류 (선수별 갱신 현황 확인)').run();
+ else await db.prepare("DELETE FROM meta WHERE k='sync_error'").run();
+ return {checked,applied,pending:stats.pending||0,failed:stats.error||0,completed:stats.done||0};
 }
 
 async function tradeSchema(db){
@@ -181,7 +206,9 @@ export default {
  try{
   if(path==='/api/state'&&request.method==='GET'){
    const [p,t,last,error]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first()]);
-   return J({players:p.results,ticks:t.results,connected:!!env.PUBG_API_KEY,interval:60,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed:0}});
+   const queue=await env.DB.prepare("SELECT name,q.status,q.last_checked,q.last_error,q.applied FROM sync_queue q JOIN players p ON p.id=q.player ORDER BY p.name").all().catch(()=>({results:[]}));
+   const completed=queue.results.filter(x=>x.status==='done').length;
+   return J({players:p.results,ticks:t.results,connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed,queue:queue.results}});
   }
   if(path==='/api/investors/public'&&request.method==='GET'){
    const data=await investors(env.DB);
