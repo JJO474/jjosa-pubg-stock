@@ -10,7 +10,13 @@ async function pubg(env,platform,path){
   arr.push(now);
   await env.DB.prepare("INSERT INTO meta(k,v) VALUES('api_gate',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(arr)).run();
   const res=await fetch(`https://api.pubg.com/shards/${platform}/${path}`,{headers:{Authorization:`Bearer ${env.PUBG_API_KEY}`,Accept:'application/vnd.api+json','User-Agent':'JJOSAStock/3.0'}});
-  if(!res.ok){const detail=res.status===401?'PUBG API 키가 유효하지 않습니다':res.status===403?'PUBG API 접근 권한이 없습니다':res.status===404?'선수를 찾지 못했습니다. 플랫폼과 닉네임을 확인해 주세요':res.status===429?'PUBG API 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요':`PUBG API 응답 오류 (${res.status})`;throw Error(detail)}
+  if(!res.ok){
+    let apiError='';
+    try{const body=await res.json();apiError=String(body?.errors?.[0]?.detail||body?.errors?.[0]?.title||body?.message||'').slice(0,180)}catch(_){}
+    const context=path.startsWith('players?')?'선수 닉네임 조회':'PUBG 데이터 조회';
+    const detail=res.status===401?'PUBG API 인증 실패 (401)':res.status===403?'PUBG API 접근 거부 (403)':res.status===404?`${context} 실패 (PUBG API 404)`:res.status===429?'PUBG API 요청 제한 (429)':`${context} 실패 (PUBG API ${res.status})`;
+    throw Error(detail+(apiError?' — '+apiError:''));
+  }
   return res.json();
 }
 async function ranked(env,p){
@@ -24,7 +30,7 @@ async function register(env,name,platform){
  if(!['steam','kakao'].includes(platform))throw Error('steam 또는 kakao 플랫폼만 지원합니다');
  if(!name||name.length>64)throw Error('닉네임을 입력해 주세요');
  const d=await pubg(env,platform,`players?filter[playerNames]=${encodeURIComponent(name)}`);
- const p=d.data?.[0];if(!p)throw Error('선수를 찾지 못했습니다. 플랫폼과 닉네임을 확인해 주세요');
+ const p=d.data?.[0];if(!p)throw Error('PUBG API가 선수 데이터를 반환하지 않았습니다 (200, 빈 목록). 플랫폼: '+platform+', 닉네임: '+name);
  if(await env.DB.prepare('SELECT id FROM players WHERE id=?').bind(p.id).first())throw Error('이미 등록된 선수입니다');
  // Register the verified account first. Ranked stats are optional and can be
  // temporarily unavailable or rate-limited; they must not block registration.
