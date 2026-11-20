@@ -1,0 +1,1 @@
+{"name":"jjosa-pubg-stock","version":"3.0.0","private":true,"scripts":{"dev":"wrangler dev","deploy":"wrangler deploy","db:migrate":"wrangler d1 migrations apply jjosa-stock-db --remote"},"devDependencies":{"wrangler":"^4.0.0"}}
