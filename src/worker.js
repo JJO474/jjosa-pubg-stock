@@ -276,6 +276,12 @@ export default {
    const completed=queue.results.filter(x=>x.status==='done').length;
    return J({players:p.results,ticks:t.results,market_halted:halt?.v==='1',connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed,queue:queue.results}});
   }
+  if(path==='/api/player/history'&&request.method==='GET'){
+   const id=url.searchParams.get('id')||'';if(!id||id.length>150)return J({error:'올바른 선수 ID가 필요합니다'},400);
+   const p=await env.DB.prepare('SELECT id,name,platform,price,rp FROM players WHERE id=?').bind(id).first();if(!p)return J({error:'상장된 선수가 아닙니다'},404);
+   const ticks=await env.DB.prepare('SELECT id,player,match_id,created,price,change_pct,kills,damage,rank,rp_delta,reason FROM ticks WHERE player=? ORDER BY id DESC LIMIT 300').bind(id).all();
+   return J({player:p,ticks:ticks.results});
+  }
   if(path==='/api/market/overview'&&request.method==='GET'){
    const stats=await marketStats(env.DB);
    const ticks=await env.DB.prepare('SELECT t.*,p.name FROM ticks t JOIN players p ON p.id=t.player ORDER BY t.id DESC LIMIT 80').all();
