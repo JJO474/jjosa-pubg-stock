@@ -95,7 +95,7 @@ async function pollPlayer(env,p){
 }
 async function sync(env){
  const now=Date.now();const prev=await env.DB.prepare("SELECT v FROM meta WHERE k='sync_started'").first();
- if(prev&&now-Number(prev.v)<300000)return 'cooldown';
+ if(prev&&now-Number(prev.v)<60000)return 'cooldown';
  await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_started',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(now)).run();
  const rows=await env.DB.prepare('SELECT * FROM players ORDER BY COALESCE(updated,created) ASC LIMIT 1').all();
  if(!rows.results.length)return 'no_players';
@@ -181,7 +181,7 @@ export default {
  try{
   if(path==='/api/state'&&request.method==='GET'){
    const [p,t,last,error]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first()]);
-   return J({players:p.results,ticks:t.results,connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed:0}});
+   return J({players:p.results,ticks:t.results,connected:!!env.PUBG_API_KEY,interval:60,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed:0}});
   }
   if(path==='/api/investors/public'&&request.method==='GET'){
    const data=await investors(env.DB);
