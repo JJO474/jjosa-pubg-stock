@@ -84,7 +84,9 @@ async function sync(env){
  try{const result=await pollPlayer(env,rows.results[0]);await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_finished',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(stamp()).run();return result;}
  catch(e){await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message)).run();throw e;}
 }
-export default {async fetch(request,env){
+export default {
+ async scheduled(event,env,ctx){ctx.waitUntil(sync(env).catch(async e=>{try{await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message||e)).run()}catch(_){}}));},
+ async fetch(request,env){
  const url=new URL(request.url),path=url.pathname;
  try{
   if(path==='/api/state'&&request.method==='GET'){
