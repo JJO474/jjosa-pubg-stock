@@ -51,13 +51,68 @@ async function register(env,name,platform){
  }catch(e){rankedStatus='pending';}
  return {id:p.id,rankedStatus};
 }
+const EFFECT_DEFAULTS={momentum:{enabled:false,weight:100,cap:1.2},chicken:{enabled:false,weight:100,cap:1.2},surprise:{enabled:false,weight:100,cap:1},rp:{enabled:false,weight:100,cap:.8},mood:{enabled:false,weight:100,cap:.5},record:{enabled:false,weight:100,cap:.8}};
+async function effectSchema(db){
+ await db.prepare("CREATE TABLE IF NOT EXISTS price_effect_settings (k TEXT PRIMARY KEY,v TEXT NOT NULL,updated TEXT NOT NULL)").run();
+ await db.prepare("CREATE TABLE IF NOT EXISTS price_effect_events (player TEXT NOT NULL,match_id TEXT NOT NULL,created TEXT NOT NULL,base_pct REAL NOT NULL,bonus_pct REAL NOT NULL,final_pct REAL NOT NULL,previous_price INTEGER NOT NULL,new_price INTEGER NOT NULL,details TEXT NOT NULL,PRIMARY KEY(player,match_id))").run();
+ await db.prepare("CREATE TABLE IF NOT EXISTS price_effect_audit (id INTEGER PRIMARY KEY AUTOINCREMENT,created TEXT NOT NULL,previous TEXT NOT NULL,next TEXT NOT NULL)").run();
+}
+function validateEffects(raw){
+ const effects={};
+ for(const [k,d] of Object.entries(EFFECT_DEFAULTS)){
+ const v=raw?.effects?.[k]||d;
+ if(typeof v.enabled!=='boolean'||!Number.isFinite(Number(v.weight))||Number(v.weight)<0||Number(v.weight)>200||!Number.isFinite(Number(v.cap))||Number(v.cap)<0||Number(v.cap)>3)throw Error('효과 설정 범위 오류: '+k);
+ effects[k]={enabled:v.enabled,weight:Number(v.weight),cap:Number(v.cap)};
+ }
+ const globalCap=Number(raw?.globalCap??3);
+ if(!Number.isFinite(globalCap)||globalCap<0||globalCap>5)throw Error('전체 상한은 0~5%p');
+ return {effects,globalCap};
+}
+async function getEffectConfig(db){
+ await effectSchema(db);const row=await db.prepare("SELECT v FROM price_effect_settings WHERE k='active'").first();
+ return row?validateEffects(JSON.parse(row.v)):validateEffects({effects:EFFECT_DEFAULTS,globalCap:3});
+}
+function effectCalculation(input,config){
+ const {base,history,kills,damage,rank,marketScore,rpDelta,rpTierChange}=input,detail={};
+ const add=(id,raw)=>{const c=config.effects[id];if(c.enabled&&raw){detail[id]=Number(clamp(raw*c.weight/100,-c.cap,c.cap).toFixed(4))}};
+ const games=history.filter(t=>t.kills!=null);
+ const positive=games.filter(t=>Number(t.change_pct)>0);
+ let streak=0;
+ for(const g of games){const sign=Math.sign(Number(g.change_pct));if(!sign)break;if(streak&&Math.sign(streak)!==sign)break;streak+=sign}
+ const a=Math.abs(streak);add('momentum',Math.sign(streak)*(a>=5?1.2:a>=3?.7:a>=2?.3:0));
+ let chickenStreak=rank===1?1:0;
+ if(rank===1)for(const g of games){if(Number(g.rank)===1)chickenStreak++;else break}
+ add('chicken',chickenStreak>=3?1.2:chickenStreak===2?.8:chickenStreak===1?.4:0);
+ const prior=games.slice(0,10);
+ if(prior.length>=5&&kills!=null&&damage!=null){
+ const avg=prior.reduce((a,t)=>a+Number(t.kills||0)*.8+Number(t.damage||0)/200,0)/prior.length;
+ const current=Number(kills)*.8+Number(damage)/200;
+ const ratio=avg>=1?current/avg:null;
+ add('surprise',ratio===null?0:ratio>=2?1:ratio>=1.5?.5:ratio<=.5?-.5:0);
+ }
+ if(rpTierChange==='up')add('rp',.8);else if(rpTierChange==='down')add('rp',-.8);
+ if(Number.isFinite(marketScore))add('mood',marketScore>=76?.5:marketScore>=56?.2:marketScore<=24?-.5:marketScore<=44?-.2:0);
+ if(games.length>=10&&kills!=null&&damage!=null){
+ const highKills=Math.max(...games.map(g=>Number(g.kills||0))),highDamage=Math.max(...games.map(g=>Number(g.damage||0)));
+ const k=Number(kills)>highKills,d=Number(damage)>highDamage;
+ add('record',k&&d?.8:k||d?.5:0);
+ }
+ const rawBonus=Object.values(detail).reduce((a,b)=>a+b,0),bonus=clamp(rawBonus,-config.globalCap,config.globalCap);
+ return {details:detail,raw_bonus_pct:Number(rawBonus.toFixed(4)),bonus_pct:Number(bonus.toFixed(4)),final_pct:Number(clamp(base+bonus,-10,10).toFixed(4))};
+}
+async function calculateMatchEffects(db,p,input,config){
+ const history=await db.prepare('SELECT kills,damage,rank,change_pct FROM ticks WHERE player=? AND kills IS NOT NULL ORDER BY id DESC LIMIT 30').bind(p.id).all();
+ // Market sentiment is display-only until a versioned, pre-event snapshot is available.
+ return effectCalculation({...input,history:history.results,marketScore:null},config);
+}
+
 async function pollPlayer(env,p){
  const d=await pubg(env,p.platform,`players/${encodeURIComponent(p.id)}`);
  const ids=(d.data?.relationships?.matches?.data||[]).map(x=>x.id).reverse();
  const unseen=[];
  for(const id of ids){if(!(await env.DB.prepare('SELECT 1 FROM processed WHERE player=? AND match_id=?').bind(p.id,id).first()))unseen.push(id);}
  // A bounded batch is essential for free-tier CPU, external API limits and request duration.
- const batch=unseen.slice(0,2);let applied=0;
+ const batch=unseen.slice(0,2);let applied=0;const effectConfig=await getEffectConfig(env.DB);
  for(const id of batch){
   const m=await pubg(env,p.platform,`matches/${encodeURIComponent(id)}`);
   const attrs=m.data?.attributes||{};
@@ -73,10 +128,12 @@ async function pollPlayer(env,p){
    // Ranked retains the existing RP/performance split. Normal matches have no RP:
    // apply a reduced 50%-strength performance change to limit farming volatility.
    const pct=clamp(isRanked?perf*(1-Number(w?.v??50)/100):perf*0.5,-10,10);
-   const price=Math.max(100,Math.round(row.price*(1+pct/100)));
+   const effect=await calculateMatchEffects(env.DB,p,{base:pct,kills,damage,rank},effectConfig);
+   const price=Math.max(100,Math.round(row.price*(1+effect.final_pct/100)));
    await env.DB.batch([
-    env.DB.prepare('INSERT OR IGNORE INTO ticks(player,match_id,created,price,change_pct,kills,damage,rank,reason) VALUES(?,?,?,?,?,?,?,?,?)').bind(p.id,id,attrs.createdAt||stamp(),price,pct,kills,damage,rank,isRanked?'경쟁전 경기':'일반전 경기'),
+    env.DB.prepare('INSERT OR IGNORE INTO ticks(player,match_id,created,price,change_pct,kills,damage,rank,reason) VALUES(?,?,?,?,?,?,?,?,?)').bind(p.id,id,attrs.createdAt||stamp(),price,effect.final_pct,kills,damage,rank,isRanked?'경쟁전 경기':'일반전 경기'),
     env.DB.prepare('UPDATE players SET price=?,updated=? WHERE id=?').bind(price,stamp(),p.id),
+    env.DB.prepare('INSERT OR IGNORE INTO price_effect_events(player,match_id,created,base_pct,bonus_pct,final_pct,previous_price,new_price,details) VALUES(?,?,?,?,?,?,?,?,?)').bind(p.id,id,stamp(),pct,effect.bonus_pct,effect.final_pct,row.price,price,JSON.stringify(effect.details)),
     env.DB.prepare('INSERT OR IGNORE INTO processed(player,match_id) VALUES(?,?)').bind(p.id,id)
    ]);applied++;
   }else await env.DB.prepare('INSERT OR IGNORE INTO processed(player,match_id) VALUES(?,?)').bind(p.id,id).run();
@@ -366,6 +423,14 @@ export default {
  async fetch(request,env){
  const url=new URL(request.url),path=url.pathname;
  try{
+  if(path==='/api/market/effects'&&request.method==='GET'){
+   const config=await getEffectConfig(env.DB);return J({config,mode:'live_when_enabled'});
+  }
+  if(path==='/api/market/effects/history'&&request.method==='GET'){
+   await effectSchema(env.DB);const id=url.searchParams.get('id');
+   const rows=id?await env.DB.prepare('SELECT * FROM price_effect_events WHERE player=? ORDER BY created DESC LIMIT 100').bind(id).all():await env.DB.prepare('SELECT e.*,p.name FROM price_effect_events e LEFT JOIN players p ON p.id=e.player ORDER BY e.created DESC LIMIT 100').all();
+   return J({events:rows.results.map(x=>({...x,details:JSON.parse(x.details)}))});
+  }
   if(path==='/api/player/candles'&&request.method==='GET'){
    const id=url.searchParams.get('id')||'',period=url.searchParams.get('period')||'1d';
    if(!id||id.length>150||!['1d','1w','1m'].includes(period))return J({error:'선수 ID 또는 기간 오류'},400);
@@ -408,6 +473,23 @@ export default {
    if(['/api/owner/state','/api/owner/fund','/api/owner/trade'].includes(path))return J(await ownerAction(env,path,body));
    if(path.startsWith('/api/investors/'))return J({error:'시청자 거래 기능이 비활성화되었습니다'},403);
 
+   if(path==='/api/effects/config'){
+    const next=validateEffects(body),old=await getEffectConfig(env.DB);
+    await env.DB.batch([
+     env.DB.prepare("INSERT INTO price_effect_settings(k,v,updated) VALUES('active',?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v,updated=excluded.updated").bind(JSON.stringify(next),stamp()),
+     env.DB.prepare('INSERT INTO price_effect_audit(created,previous,next) VALUES(?,?,?)').bind(stamp(),JSON.stringify(old),JSON.stringify(next))
+    ]);
+    return J({ok:true,config:next});
+   }
+   if(path==='/api/effects/preview'){
+    const config=validateEffects(body.config||await getEffectConfig(env.DB));
+    const id=String(body.player_id||''),player=await env.DB.prepare('SELECT id,name,price FROM players WHERE id=?').bind(id).first();
+    if(!player)throw Error('선수를 선택해 주세요');
+    const history=await env.DB.prepare('SELECT kills,damage,rank,change_pct FROM ticks WHERE player=? AND kills IS NOT NULL ORDER BY id DESC LIMIT 30').bind(id).all();
+    const latest=history.results[0];if(!latest)throw Error('경기 기록이 없습니다');
+    const result=effectCalculation({base:Number(latest.change_pct),kills:latest.kills,damage:latest.damage,rank:latest.rank,history:history.results.slice(1),marketScore:null},config);
+    return J({player,preview:result,note:'최근 기록의 변동률을 기준으로 한 가상 미리보기이며 저장하지 않습니다.'});
+   }
    if(path==='/api/auth/check')return J({ok:true,message:'관리자 인증 성공'});
    if(path==='/api/soop/candidates')return J({...await soopCandidates(env.DB),provider_configured:!!env.OANOR_API_KEY});
    if(path==='/api/soop/add'){
