@@ -251,6 +251,7 @@ function drawMarketPages(){
  document.querySelectorAll('[data-preview-id]').forEach(b=>b.onclick=()=>previewPlayer(b.dataset.previewId));
  document.querySelectorAll('[data-fav-id]').forEach(b=>b.onclick=()=>toggleFavorite(b.dataset.favId));
  wireMarketRows();
+ if(jjsAnalytics)renderPremiumIndex();
 }
 document.querySelectorAll('[data-rank]').forEach(b=>b.onclick=()=>{homeRank=b.dataset.rank;document.querySelectorAll('[data-rank]').forEach(x=>x.classList.toggle('active',x===b));drawMarketPages()});
 $('#previewGo').onclick=()=>{if(selected)choose(selected)};
