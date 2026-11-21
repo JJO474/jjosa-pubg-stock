@@ -300,11 +300,11 @@ async function soopCandidates(db){
  await soopSchema(db);
  const rows=await db.prepare("SELECT bj_id,bj_nick,title,category,viewers,channel_url,first_seen,last_seen,status,pubg_name,platform,player_id FROM soop_candidates ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,last_seen DESC LIMIT 250").all();
  const last=await db.prepare("SELECT v FROM meta WHERE k='soop_scan_finished'").first(),error=await db.prepare("SELECT v FROM meta WHERE k='soop_scan_error'").first();
- return {candidates:rows.results,last_scan:last?.v||null,error:error?.v||null,provider_configured:false,interval_minutes:30};
+ return {candidates:rows.results,mode:'manual',last_scan:last?.v||null,error:error?.v||null};
 }
 
 export default {
- async scheduled(event,env,ctx){ctx.waitUntil(sync(env).catch(async e=>{try{await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message||e)).run()}catch(_){}}));ctx.waitUntil(scanSoop(env).catch(async e=>{try{await env.DB.prepare("INSERT INTO meta(k,v) VALUES('soop_scan_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message||e).slice(0,300)).run()}catch(_){}}));},
+ async scheduled(event,env,ctx){ctx.waitUntil(sync(env).catch(async e=>{try{await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message||e)).run()}catch(_){}}));},
  async fetch(request,env){
  const url=new URL(request.url),path=url.pathname;
  try{
@@ -337,7 +337,20 @@ export default {
 
    if(path==='/api/auth/check')return J({ok:true,message:'관리자 인증 성공'});
    if(path==='/api/soop/candidates')return J({...await soopCandidates(env.DB),provider_configured:!!env.OANOR_API_KEY});
-   if(path==='/api/soop/scan')return J({ok:true,result:await scanSoop(env,true)});
+   if(path==='/api/soop/add'){
+    await soopSchema(env.DB);
+    const raw=String(body.bj_id||'').trim();
+    let id=raw;
+    if(/^https?:\/\//i.test(raw)){const u=new URL(raw);if(!['play.sooplive.co.kr','bj.afreecatv.com','www.sooplive.co.kr','sooplive.co.kr'].includes(u.hostname))throw Error('SOOP 채널 주소만 입력하세요');id=u.pathname.split('/').filter(Boolean).at(-1)||'';}
+    if(!/^[a-zA-Z0-9_-]{2,80}$/.test(id))throw Error('올바른 SOOP 채널 ID 또는 방송 주소를 입력하세요');
+    const nick=String(body.bj_nick||'').trim();
+    if(!nick||nick.length>80)throw Error('스트리머 이름을 입력하세요 (최대 80자)');
+    const old=await env.DB.prepare('SELECT status FROM soop_candidates WHERE bj_id=?').bind(id).first();
+    if(old?.status==='approved')throw Error('이미 상장된 스트리머입니다');
+    await env.DB.prepare("INSERT INTO soop_candidates(bj_id,bj_nick,title,category,viewers,channel_url,first_seen,last_seen,status) VALUES(?,?,'','직접 등록',0,?,?,?,'pending') ON CONFLICT(bj_id) DO UPDATE SET bj_nick=excluded.bj_nick,last_seen=excluded.last_seen,status='pending'").bind(id,nick,'https://play.sooplive.co.kr/'+id,stamp(),stamp()).run();
+    return J({ok:true,bj_id:id});
+   }
+   if(path==='/api/soop/scan')return J({error:'자동 탐색은 비활성화되었습니다. 원하는 스트리머를 직접 추가하세요.'},410);
    if(path==='/api/soop/reject'){await soopSchema(env.DB);const id=String(body.bj_id||'');const found=await env.DB.prepare('SELECT status FROM soop_candidates WHERE bj_id=?').bind(id).first();if(!found)throw Error('후보를 찾지 못했습니다');if(found.status==='approved')throw Error('이미 상장된 계정은 후보 거절로 삭제할 수 없습니다');await env.DB.prepare("UPDATE soop_candidates SET status='rejected' WHERE bj_id=?").bind(id).run();return J({ok:true});}
    if(path==='/api/soop/approve'){await soopSchema(env.DB);const id=String(body.bj_id||''),name=String(body.pubg_name||'').trim(),platform=String(body.platform||'steam');const found=await env.DB.prepare('SELECT status FROM soop_candidates WHERE bj_id=?').bind(id).first();if(!found||found.status!=='pending')throw Error('승인 대기 중인 후보만 등록할 수 있습니다');if(!name||name.length>64)throw Error('관리자가 확인한 PUBG 게임 닉네임을 입력하세요');const result=await register(env,name,platform);await env.DB.prepare("UPDATE soop_candidates SET status='approved',pubg_name=?,platform=?,player_id=? WHERE bj_id=?").bind(name,platform,result.id,id).run();return J({ok:true,...result});}
    if(path==='/api/players')return J({ok:true,...await register(env,String(body.name||'').trim(),String(body.platform||'steam'))});
