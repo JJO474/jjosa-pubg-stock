@@ -162,7 +162,7 @@ async function marketAnalytics(db){
  const [players,first,latest,vol]=await Promise.all([
  db.prepare('SELECT id,name,price,created FROM players').all(),
  db.prepare('SELECT player,price,created FROM ticks WHERE id IN (SELECT MIN(id) FROM ticks GROUP BY player)').all(),
- db.prepare('SELECT player,price,created FROM ticks WHERE id IN (SELECT MAX(id) FROM ticks GROUP BY player)').all(),
+ db.prepare('SELECT player,price,created,change_pct FROM ticks WHERE id IN (SELECT MAX(id) FROM ticks GROUP BY player)').all(),
  db.prepare("SELECT player_id,SUM(quantity) AS volume,SUM(total) AS turnover FROM investor_trades WHERE created>=? GROUP BY player_id").bind(new Date(Date.now()-86400000).toISOString()).all()
  ]);
  const firstMap=new Map(first.results.map(t=>[t.player,t])),latestMap=new Map(latest.results.map(t=>[t.player,t])),vmap=new Map(vol.results.map(v=>[v.player_id,v]));
