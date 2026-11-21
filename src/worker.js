@@ -159,17 +159,37 @@ async function candleData(db,id,period){
  return {player:{id:p.id,name:p.name,price:p.price},period,candles:[...buckets.values()].sort((a,b)=>a.time.localeCompare(b.time)).slice(-360),limited:ticks.results.length>=4000||trades.results.length>=4000};
 }
 async function marketAnalytics(db){
- const [players,first,latest,vol]=await Promise.all([
- db.prepare('SELECT id,name,price,created FROM players').all(),
- db.prepare('SELECT player,price,created FROM ticks WHERE id IN (SELECT MIN(id) FROM ticks GROUP BY player)').all(),
- db.prepare('SELECT player,price,created,change_pct FROM ticks WHERE id IN (SELECT MAX(id) FROM ticks GROUP BY player)').all(),
+ const [players,ticks,vol]=await Promise.all([
+ db.prepare('SELECT id,name,price,rp,platform,created FROM players ORDER BY id').all(),
+ db.prepare('SELECT player,price,change_pct,kills,damage,rank,created,id FROM ticks ORDER BY id DESC LIMIT 12000').all(),
  db.prepare("SELECT player_id,SUM(quantity) AS volume,SUM(total) AS turnover FROM investor_trades WHERE created>=? GROUP BY player_id").bind(new Date(Date.now()-86400000).toISOString()).all()
  ]);
- const firstMap=new Map(first.results.map(t=>[t.player,t])),latestMap=new Map(latest.results.map(t=>[t.player,t])),vmap=new Map(vol.results.map(v=>[v.player_id,v]));
- const items=players.results.map(p=>{const t=latestMap.get(p.id),v=vmap.get(p.id);const old=t&&Number(t.price)!==0?Number(t.price)/(1+Number((t.change_pct)||0)/100):Number(p.price);return {id:p.id,name:p.name,price:p.price,change_pct:old?((p.price-old)/old)*100:0,volume:Number(v?.volume||0),turnover:Number(v?.turnover||0)};});
- // Equal-weight index based on each constituent's first observed listed price.
- const baseline=items.length?items.reduce((sum,p)=>{const f=firstMap.get(p.id);const base=f&&Number(f.price)>0?Number(f.price):10000;return sum+Number(p.price)/base},0)/items.length*1000:1000;
- return {index:{value:baseline,method:'equal_weight_first_observed',constituents:items.length},rankings:{gainers:items.slice().sort((a,b)=>b.change_pct-a.change_pct).slice(0,10),losers:items.slice().sort((a,b)=>a.change_pct-b.change_pct).slice(0,10),volume:items.slice().sort((a,b)=>b.volume-a.volume).slice(0,10),turnover:items.slice().sort((a,b)=>b.turnover-a.turnover).slice(0,10)}};
+ const byPlayer=new Map(),vmap=new Map(vol.results.map(v=>[v.player_id,v]));
+ for(const t of ticks.results){if(!byPlayer.has(t.player))byPlayer.set(t.player,[]);byPlayer.get(t.player).push(t)}
+ const now=Date.now(),dayStart=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'}));dayStart.setHours(0,0,0,0);
+ const items=players.results.map(p=>{
+ const arr=byPlayer.get(p.id)||[],recent=arr.filter(t=>Date.parse(t.created)>=now-30*86400000),games=recent.filter(t=>t.kills!=null),last=arr[0],v=vmap.get(p.id);
+ const prior=last&&Number.isFinite(Number(last.change_pct))&&Math.abs(Number(last.change_pct))<99?Number(last.price)/(1+Number(last.change_pct)/100):Number(p.price);
+ const first=arr[arr.length-1],base=first?Number(first.price):10000;
+ const returns=arr.slice(0,30).map(t=>Number(t.change_pct)).filter(Number.isFinite),mean=returns.length?returns.reduce((a,b)=>a+b,0)/returns.length:0;
+ const volatility=returns.length>1?Math.sqrt(returns.reduce((a,b)=>a+(b-mean)**2,0)/(returns.length-1)):0;
+ return {id:p.id,name:p.name,price:Number(p.price),rp:p.rp,platform:p.platform,change_pct:prior?((Number(p.price)-prior)/prior)*100:0,volume:Number(v?.volume||0),turnover:Number(v?.turnover||0),baseline:base>0?base:10000,average_kills:games.length?games.reduce((a,t)=>a+Number(t.kills||0),0)/games.length:null,average_damage:games.length?games.reduce((a,t)=>a+Number(t.damage||0),0)/games.length:null,games:games.length,volatility,history_points:arr.length};
+ });
+ const index=items.length?items.reduce((sum,p)=>sum+p.price/p.baseline,0)/items.length*1000:1000;
+ const historyDates=new Set();
+ for(const t of ticks.results){const d=kstDate(t.created);historyDates.add(d)}
+ const days=[...historyDates].sort().slice(-90);
+ const ascending=new Map([...byPlayer].map(([id,arr])=>[id,arr.slice().reverse()]));
+ const cursors=new Map(items.map(p=>[p.id,{index:0,price:p.baseline}]));
+ const history=[];
+ for(const day of days){
+  const end=Date.parse(day+'T14:59:59.999Z');
+  for(const p of items){const cur=cursors.get(p.id),arr=ascending.get(p.id)||[];while(cur.index<arr.length&&Date.parse(arr[cur.index].created)<=end){cur.price=Number(arr[cur.index].price);cur.index++}}
+  const value=items.length?items.reduce((sum,p)=>sum+cursors.get(p.id).price/p.baseline,0)/items.length*1000:1000;
+  history.push({date:day,value:Number(value.toFixed(2))});
+ }
+ if(!history.length||history.at(-1).value!==Number(index.toFixed(2)))history.push({date:kstDate(stamp()),value:Number(index.toFixed(2))});
+ return {index:{value:Number(index.toFixed(2)),method:'equal_weight_first_observed',constituents:items.length,history,history_note:'현재 상장 종목 기준으로 과거 가격을 재구성한 참고 지수이며 상장·상장폐지 시 과거 수치가 변경될 수 있습니다.'},rankings:{gainers:items.slice().sort((a,b)=>b.change_pct-a.change_pct).slice(0,10),losers:items.slice().sort((a,b)=>a.change_pct-b.change_pct).slice(0,10),volume:items.slice().sort((a,b)=>b.volume-a.volume).slice(0,10),turnover:items.slice().sort((a,b)=>b.turnover-a.turnover).slice(0,10)},players:items,generated_at:stamp(),history_limited:ticks.results.length>=12000};
 }
 
 async function marketSchema(db){
