@@ -76,7 +76,6 @@ function effectCalculation(input,config){
  const {base,history,kills,damage,rank,marketScore,rpDelta,rpTierChange}=input,detail={};
  const add=(id,raw)=>{const c=config.effects[id];if(c.enabled&&raw){detail[id]=Number(clamp(raw*c.weight/100,-c.cap,c.cap).toFixed(4))}};
  const games=history.filter(t=>t.kills!=null);
- const positive=games.filter(t=>Number(t.change_pct)>0);
  let streak=0;
  for(const g of games){const sign=Math.sign(Number(g.change_pct));if(!sign)break;if(streak&&Math.sign(streak)!==sign)break;streak+=sign}
  const a=Math.abs(streak);add('momentum',Math.sign(streak)*(a>=5?1.2:a>=3?.7:a>=2?.3:0));
@@ -95,7 +94,7 @@ function effectCalculation(input,config){
  if(games.length>=10&&kills!=null&&damage!=null){
  const highKills=Math.max(...games.map(g=>Number(g.kills||0))),highDamage=Math.max(...games.map(g=>Number(g.damage||0)));
  const k=Number(kills)>highKills,d=Number(damage)>highDamage;
- add('record',k&&d?.8:k||d?.5:0);
+ add('record',k&&d?0.8:(k||d?0.5:0));
  }
  const rawBonus=Object.values(detail).reduce((a,b)=>a+b,0),bonus=clamp(rawBonus,-config.globalCap,config.globalCap);
  return {details:detail,raw_bonus_pct:Number(rawBonus.toFixed(4)),bonus_pct:Number(bonus.toFixed(4)),final_pct:Number(clamp(base+bonus,-10,10).toFixed(4))};
@@ -487,8 +486,10 @@ export default {
     if(!player)throw Error('선수를 선택해 주세요');
     const history=await env.DB.prepare('SELECT kills,damage,rank,change_pct FROM ticks WHERE player=? AND kills IS NOT NULL ORDER BY id DESC LIMIT 30').bind(id).all();
     const latest=history.results[0];if(!latest)throw Error('경기 기록이 없습니다');
-    const result=effectCalculation({base:Number(latest.change_pct),kills:latest.kills,damage:latest.damage,rank:latest.rank,history:history.results.slice(1),marketScore:null},config);
-    return J({player,preview:result,note:'최근 기록의 변동률을 기준으로 한 가상 미리보기이며 저장하지 않습니다.'});
+    const priorEffects=await env.DB.prepare('SELECT base_pct FROM price_effect_events WHERE player=? AND match_id=(SELECT match_id FROM ticks WHERE player=? AND kills IS NOT NULL ORDER BY id DESC LIMIT 1)').bind(id,id).first();
+    const base=priorEffects?Number(priorEffects.base_pct):Number(latest.change_pct);
+    const result=effectCalculation({base,kills:latest.kills,damage:latest.damage,rank:latest.rank,history:history.results.slice(1),marketScore:null},config);
+    return J({player,base_pct:base,preview:result,note:'최근 기록의 변동률을 기준으로 한 가상 미리보기이며 저장하지 않습니다. 기존 기록에 추가 효과가 이미 적용되었다면 기록된 원래 변동률을 사용합니다.'});
    }
    if(path==='/api/auth/check')return J({ok:true,message:'관리자 인증 성공'});
    if(path==='/api/soop/candidates')return J({...await soopCandidates(env.DB),provider_configured:!!env.OANOR_API_KEY});
