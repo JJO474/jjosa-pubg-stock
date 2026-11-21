@@ -337,6 +337,25 @@ export default {
 
    if(path==='/api/auth/check')return J({ok:true,message:'관리자 인증 성공'});
    if(path==='/api/soop/candidates')return J({...await soopCandidates(env.DB),provider_configured:!!env.OANOR_API_KEY});
+   if(path==='/api/soop/import'){
+    await soopSchema(env.DB);
+    const members=body.members;
+    if(!Array.isArray(members)||members.length>200)throw Error('한 번에 최대 200명의 스트리머를 가져올 수 있습니다');
+    const unique=new Map();
+    for(const item of members){
+     const id=String(item?.id||'').trim(),nick=String(item?.nick||'').trim();
+     if(!/^[a-zA-Z0-9_-]{2,80}$/.test(id)||!nick||nick.length>80)continue;
+     unique.set(id,{id,nick});
+    }
+    let added=0,skipped=0,updated=0;
+    for(const m of unique.values()){
+     const existing=await env.DB.prepare('SELECT status FROM soop_candidates WHERE bj_id=?').bind(m.id).first();
+     if(existing?.status==='approved'||existing?.status==='rejected'){skipped++;continue;}
+     await env.DB.prepare("INSERT INTO soop_candidates(bj_id,bj_nick,title,category,viewers,channel_url,first_seen,last_seen,status) VALUES(?,?,'','My SOOP 가져오기',0,?,?,?,'pending') ON CONFLICT(bj_id) DO UPDATE SET bj_nick=excluded.bj_nick,last_seen=excluded.last_seen").bind(m.id,m.nick,'https://play.sooplive.co.kr/'+m.id,stamp(),stamp()).run();
+     if(existing)updated++;else added++;
+    }
+    return J({ok:true,added,updated,skipped,selected:unique.size});
+   }
    if(path==='/api/soop/add'){
     await soopSchema(env.DB);
     const raw=String(body.bj_id||'').trim();
