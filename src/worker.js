@@ -134,6 +134,44 @@ async function sync(env){
 }
 
 
+
+const kstDate=iso=>new Date(new Date(iso).getTime()+9*3600000).toISOString().slice(0,10);
+function candleKey(iso,period){
+ const d=kstDate(iso);if(period==='1d')return d;
+ const x=new Date(d+'T00:00:00Z');
+ if(period==='1w'){x.setUTCDate(x.getUTCDate()-(x.getUTCDay()+6)%7);return x.toISOString().slice(0,10);}
+ return d.slice(0,7);
+}
+async function candleData(db,id,period){
+ const [ticks,trades,p]=await Promise.all([
+ db.prepare('SELECT id,created,price,change_pct FROM ticks WHERE player=? ORDER BY id ASC LIMIT 4000').bind(id).all(),
+ db.prepare('SELECT created,quantity FROM investor_trades WHERE player_id=? ORDER BY id ASC LIMIT 4000').bind(id).all(),
+ db.prepare('SELECT id,name,price,created FROM players WHERE id=?').bind(id).first()
+ ]);
+ if(!p)return null;
+ const buckets=new Map();let prev=10000;
+ const ensure=(key,price)=>{if(!buckets.has(key))buckets.set(key,{time:key,open:price,high:price,low:price,close:price,volume:0,events:0});return buckets.get(key)};
+ for(const t of ticks.results){
+ const price=Number(t.price),key=candleKey(t.created,period),c=ensure(key,prev);
+ c.high=Math.max(c.high,price);c.low=Math.min(c.low,price);c.close=price;c.events++;prev=price;
+ }
+ for(const t of trades.results){const key=candleKey(t.created,period),c=ensure(key,prev);c.volume+=Number(t.quantity)||0;}
+ return {player:{id:p.id,name:p.name,price:p.price},period,candles:[...buckets.values()].sort((a,b)=>a.time.localeCompare(b.time)).slice(-360),limited:ticks.results.length>=4000||trades.results.length>=4000};
+}
+async function marketAnalytics(db){
+ const [players,first,latest,vol]=await Promise.all([
+ db.prepare('SELECT id,name,price,created FROM players').all(),
+ db.prepare('SELECT player,price,created FROM ticks WHERE id IN (SELECT MIN(id) FROM ticks GROUP BY player)').all(),
+ db.prepare('SELECT player,price,created FROM ticks WHERE id IN (SELECT MAX(id) FROM ticks GROUP BY player)').all(),
+ db.prepare("SELECT player_id,SUM(quantity) AS volume,SUM(total) AS turnover FROM investor_trades WHERE created>=? GROUP BY player_id").bind(new Date(Date.now()-86400000).toISOString()).all()
+ ]);
+ const firstMap=new Map(first.results.map(t=>[t.player,t])),latestMap=new Map(latest.results.map(t=>[t.player,t])),vmap=new Map(vol.results.map(v=>[v.player_id,v]));
+ const items=players.results.map(p=>{const t=latestMap.get(p.id),v=vmap.get(p.id);const old=t&&Number(t.price)!==0?Number(t.price)/(1+Number((t.change_pct)||0)/100):Number(p.price);return {id:p.id,name:p.name,price:p.price,change_pct:old?((p.price-old)/old)*100:0,volume:Number(v?.volume||0),turnover:Number(v?.turnover||0)};});
+ // Equal-weight index based on each constituent's first observed listed price.
+ const baseline=items.length?items.reduce((sum,p)=>{const f=firstMap.get(p.id);const base=f&&Number(f.price)>0?Number(f.price):10000;return sum+Number(p.price)/base},0)/items.length*1000:1000;
+ return {index:{value:baseline,method:'equal_weight_first_observed',constituents:items.length},rankings:{gainers:items.slice().sort((a,b)=>b.change_pct-a.change_pct).slice(0,10),losers:items.slice().sort((a,b)=>a.change_pct-b.change_pct).slice(0,10),volume:items.slice().sort((a,b)=>b.volume-a.volume).slice(0,10),turnover:items.slice().sort((a,b)=>b.turnover-a.turnover).slice(0,10)}};
+}
+
 async function marketSchema(db){
  await db.batch([
  db.prepare("CREATE TABLE IF NOT EXISTS portfolio_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,account_id INTEGER NOT NULL,created TEXT NOT NULL,cash INTEGER NOT NULL,holdings_value INTEGER NOT NULL,total_value INTEGER NOT NULL,reason TEXT NOT NULL)"),
@@ -308,6 +346,21 @@ export default {
  async fetch(request,env){
  const url=new URL(request.url),path=url.pathname;
  try{
+  if(path==='/api/player/candles'&&request.method==='GET'){
+   const id=url.searchParams.get('id')||'',period=url.searchParams.get('period')||'1d';
+   if(!id||id.length>150||!['1d','1w','1m'].includes(period))return J({error:'선수 ID 또는 기간 오류'},400);
+   await tradeSchema(env.DB);
+   const data=await candleData(env.DB,id,period);return data?J(data):J({error:'상장된 선수가 아닙니다'},404);
+  }
+  if(path==='/api/market/analytics'&&request.method==='GET'){
+   await tradeSchema(env.DB);
+   return J(await marketAnalytics(env.DB));
+  }
+  if(path==='/api/market/news'&&request.method==='GET'){
+   await marketSchema(env.DB);
+   const [t,n]=await Promise.all([env.DB.prepare('SELECT t.*,p.name FROM ticks t JOIN players p ON p.id=t.player ORDER BY t.id DESC LIMIT 80').all(),env.DB.prepare('SELECT id,created,title,body,category FROM market_notices ORDER BY id DESC LIMIT 30').all()]);
+   return J({news:[...t.results.map(x=>({...tickNews(x,{name:x.name}),player_id:x.player})),...n.results.map(x=>({...x,player_id:null}))].sort((a,b)=>String(b.created).localeCompare(String(a.created))).slice(0,80)});
+  }
   if(path==='/api/state'&&request.method==='GET'){
    const [p,t,last,error,halt]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first(),env.DB.prepare("SELECT v FROM settings WHERE k='market_halt'").first()]);
    const queue=await env.DB.prepare("SELECT name,q.status,q.last_checked,q.last_error,q.applied FROM sync_queue q JOIN players p ON p.id=q.player ORDER BY p.name").all().catch(()=>({results:[]}));
