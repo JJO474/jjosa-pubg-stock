@@ -267,8 +267,44 @@ async function ownerAction(env,path,body){
  throw Error('지원하지 않는 요청');
 }
 
+
+async function soopSchema(db){
+ await db.prepare("CREATE TABLE IF NOT EXISTS soop_candidates (bj_id TEXT PRIMARY KEY,bj_nick TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',viewers INTEGER NOT NULL DEFAULT 0,channel_url TEXT NOT NULL DEFAULT '',first_seen TEXT NOT NULL,last_seen TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',pubg_name TEXT,platform TEXT,player_id TEXT)").run();
+}
+async function scanSoop(env,force=false){
+ const db=env.DB;await soopSchema(db);
+ const cycle=Math.floor(Date.now()/1800000),previous=await db.prepare("SELECT v FROM meta WHERE k='soop_scan_cycle'").first();
+ if(!force&&Number(previous?.v)===cycle)return {skipped:true,reason:'30분 탐색 주기 대기'};
+ if(!env.OANOR_API_KEY)throw Error('SOOP 탐색 연동을 위해 OANOR_API_KEY Worker 비밀키 설정이 필요합니다');
+ const res=await fetch('https://api.oanor.com/soop-api/v1/live?limit=60',{headers:{'x-oanor-key':env.OANOR_API_KEY,'Accept':'application/json'},signal:AbortSignal.timeout(12000)});
+ if(!res.ok)throw Error('SOOP 방송 정보 제공 API 오류: HTTP '+res.status);
+ const data=await res.json(),broadcasts=data?.data?.broadcasts;
+ if(!Array.isArray(broadcasts))throw Error('SOOP 방송 응답 형식이 예상과 다릅니다');
+ let matched=0,added=0;
+ for(const b of broadcasts){
+  const category=String(b.category||''),title=String(b.title||''),tags=Array.isArray(b.hashtags)?b.hashtags.join(' '):'';
+  if(!/배틀그라운드|PUBG|배그/i.test(category+' '+tags+' '+title))continue;
+  const id=String(b.bj_id||'').trim(),nick=String(b.bj_nick||'').trim();
+  if(!/^[a-zA-Z0-9_-]{2,80}$/.test(id)||!nick)continue;
+  matched++;
+  const existing=await db.prepare('SELECT bj_id FROM soop_candidates WHERE bj_id=?').bind(id).first();
+  await db.prepare("INSERT INTO soop_candidates(bj_id,bj_nick,title,category,viewers,channel_url,first_seen,last_seen) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(bj_id) DO UPDATE SET bj_nick=excluded.bj_nick,title=excluded.title,category=excluded.category,viewers=excluded.viewers,channel_url=excluded.channel_url,last_seen=excluded.last_seen").bind(id,nick,title.slice(0,400),category.slice(0,120),Math.max(0,Number(b.viewers)||0),String(b.channel_url||'https://play.sooplive.co.kr/'+id).slice(0,300),stamp(),stamp()).run();
+  if(!existing)added++;
+ }
+ await db.prepare("INSERT INTO meta(k,v) VALUES('soop_scan_cycle',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(cycle)).run();
+ await db.prepare("INSERT INTO meta(k,v) VALUES('soop_scan_finished',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(stamp()).run();
+ await db.prepare("DELETE FROM meta WHERE k='soop_scan_error'").run();
+ return {checked:broadcasts.length,matched,added,coverage:'상위 최대 60개 라이브 방송 중 PUBG 관련 방송'};
+}
+async function soopCandidates(db){
+ await soopSchema(db);
+ const rows=await db.prepare("SELECT bj_id,bj_nick,title,category,viewers,channel_url,first_seen,last_seen,status,pubg_name,platform,player_id FROM soop_candidates ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,last_seen DESC LIMIT 250").all();
+ const last=await db.prepare("SELECT v FROM meta WHERE k='soop_scan_finished'").first(),error=await db.prepare("SELECT v FROM meta WHERE k='soop_scan_error'").first();
+ return {candidates:rows.results,last_scan:last?.v||null,error:error?.v||null,provider_configured:false,interval_minutes:30};
+}
+
 export default {
- async scheduled(event,env,ctx){ctx.waitUntil(sync(env).catch(async e=>{try{await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message||e)).run()}catch(_){}}));},
+ async scheduled(event,env,ctx){ctx.waitUntil(sync(env).catch(async e=>{try{await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message||e)).run()}catch(_){}}));ctx.waitUntil(scanSoop(env).catch(async e=>{try{await env.DB.prepare("INSERT INTO meta(k,v) VALUES('soop_scan_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message||e).slice(0,300)).run()}catch(_){}}));},
  async fetch(request,env){
  const url=new URL(request.url),path=url.pathname;
  try{
@@ -300,6 +336,10 @@ export default {
    if(path.startsWith('/api/investors/'))return J({error:'시청자 거래 기능이 비활성화되었습니다'},403);
 
    if(path==='/api/auth/check')return J({ok:true,message:'관리자 인증 성공'});
+   if(path==='/api/soop/candidates')return J({...await soopCandidates(env.DB),provider_configured:!!env.OANOR_API_KEY});
+   if(path==='/api/soop/scan')return J({ok:true,result:await scanSoop(env,true)});
+   if(path==='/api/soop/reject'){await soopSchema(env.DB);const id=String(body.bj_id||'');const found=await env.DB.prepare('SELECT status FROM soop_candidates WHERE bj_id=?').bind(id).first();if(!found)throw Error('후보를 찾지 못했습니다');if(found.status==='approved')throw Error('이미 상장된 계정은 후보 거절로 삭제할 수 없습니다');await env.DB.prepare("UPDATE soop_candidates SET status='rejected' WHERE bj_id=?").bind(id).run();return J({ok:true});}
+   if(path==='/api/soop/approve'){await soopSchema(env.DB);const id=String(body.bj_id||''),name=String(body.pubg_name||'').trim(),platform=String(body.platform||'steam');const found=await env.DB.prepare('SELECT status FROM soop_candidates WHERE bj_id=?').bind(id).first();if(!found||found.status!=='pending')throw Error('승인 대기 중인 후보만 등록할 수 있습니다');if(!name||name.length>64)throw Error('관리자가 확인한 PUBG 게임 닉네임을 입력하세요');const result=await register(env,name,platform);await env.DB.prepare("UPDATE soop_candidates SET status='approved',pubg_name=?,platform=?,player_id=? WHERE bj_id=?").bind(name,platform,result.id,id).run();return J({ok:true,...result});}
    if(path==='/api/players')return J({ok:true,...await register(env,String(body.name||'').trim(),String(body.platform||'steam'))});
    if(path==='/api/sync')return J({ok:true,status:await sync(env)});
    if(path==='/api/delete'){await env.DB.prepare('DELETE FROM players WHERE id=?').bind(body.id).run();return J({ok:true});}
