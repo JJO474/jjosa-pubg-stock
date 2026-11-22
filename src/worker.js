@@ -382,6 +382,90 @@ async function ownerAction(env,path,body){
 }
 
 
+
+const NOTICE_CATEGORIES={tournament:1,win:1.5,return:.8,scheduled:.3,neutral:0,break:0,other:0};
+async function noticeSchema(db){
+ await db.prepare("CREATE TABLE IF NOT EXISTS soop_notice_config (k TEXT PRIMARY KEY,v TEXT NOT NULL)").run();
+ await db.prepare("CREATE TABLE IF NOT EXISTS soop_notice_posts (id INTEGER PRIMARY KEY AUTOINCREMENT,bj_id TEXT NOT NULL,post_no TEXT NOT NULL,player_id TEXT NOT NULL,title TEXT NOT NULL,url TEXT NOT NULL,created TEXT NOT NULL,detected TEXT NOT NULL,category TEXT NOT NULL,proposed_pct REAL NOT NULL,status TEXT NOT NULL DEFAULT 'pending',reviewed TEXT,applied_pct REAL NOT NULL DEFAULT 0,UNIQUE(bj_id,post_no))").run();
+ await db.prepare("CREATE TABLE IF NOT EXISTS soop_notice_log (id INTEGER PRIMARY KEY AUTOINCREMENT,created TEXT NOT NULL,action TEXT NOT NULL,detail TEXT NOT NULL)").run();
+}
+async function noticeConfig(db){
+ await noticeSchema(db);
+ const row=await db.prepare("SELECT v FROM soop_notice_config WHERE k='active'").first();
+ return row?JSON.parse(row.v):{auto_check:true,interval_minutes:10,approval_mode:'optional',daily_cap:2,price_effect_enabled:false};
+}
+function classifyNotice(title){
+ const t=String(title).slice(0,180);
+ if(/개인사정|건강|사고|병원|논란|사과|휴방|잠시 쉬|방송 쉼/i.test(t))return {category:'break',pct:0};
+ if(/우승|챔피언|1등 확정/i.test(t)&&/배그|PUBG|대회|경쟁전/i.test(t))return {category:'win',pct:1.5};
+ if(/배그|PUBG|경쟁전/i.test(t)&&/대회|참가|출전/i.test(t))return {category:'tournament',pct:1};
+ if(/배그|PUBG/i.test(t)&&/복귀|컴백/i.test(t))return {category:'return',pct:.8};
+ if(/배그|PUBG|경쟁전/i.test(t)&&/방송|진행|예정/i.test(t))return {category:'scheduled',pct:.3};
+ return {category:'neutral',pct:0};
+}
+async function ingestNotice(db,bjId,postNo,title,url){
+ await noticeSchema(db);
+ const c=await db.prepare("SELECT player_id FROM soop_candidates WHERE bj_id=? AND status='approved'").bind(bjId).first();
+ if(!c?.player_id||!await db.prepare('SELECT id FROM players WHERE id=?').bind(c.player_id).first())throw Error('연결된 상장 선수 없음');
+ if(!/^https:\/\/www\.sooplive\.com\/station\/[a-zA-Z0-9_-]+\/post\/[0-9]+$/.test(url))throw Error('올바른 SOOP 공지 URL 필요');
+ if(url.split('/')[4]!==bjId||url.split('/')[6]!==String(postNo))throw Error('공지 작성 채널과 주소 불일치');
+ const v=classifyNotice(title);
+ await db.prepare("INSERT OR IGNORE INTO soop_notice_posts(bj_id,post_no,player_id,title,url,created,detected,category,proposed_pct,status) VALUES(?,?,?,?,?,?,?,?,?,'pending')").bind(bjId,String(postNo),c.player_id,String(title).slice(0,180),url,stamp(),stamp(),v.category,v.pct).run();
+ return v;
+}
+async function scanNoticeBoards(env){
+ const db=env.DB,cfg=await noticeConfig(db);
+ if(!cfg.auto_check)return {skipped:'자동 확인 OFF'};
+ // The undocumented channel endpoint is NOT called without explicit operator confirmation
+ // that the intended use is authorized by SOOP. No authentication bypass or retry evasion.
+ if(env.SOOP_BOARD_FETCH_APPROVED!=='true')return {skipped:'SOOP 게시판 수집 허용 여부 미확인: 수집 대기'};
+ const slot=Math.floor(Date.now()/(cfg.interval_minutes*60000));
+ const prev=await db.prepare("SELECT v FROM soop_notice_config WHERE k='last_scan_slot'").first();
+ if(Number(prev?.v)===slot)return {skipped:'10분 확인 주기 대기'};
+ await db.prepare("INSERT INTO soop_notice_config(k,v) VALUES('last_scan_slot',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(slot)).run();
+ await soopSchema(db);
+ const channels=await db.prepare("SELECT bj_id FROM soop_candidates WHERE status='approved' AND player_id IS NOT NULL ORDER BY bj_id LIMIT 10").all();
+ let found=0,errors=[];
+ for(const c of channels.results){
+  try{
+   const endpoint='https://api-channel.sooplive.com/v1.1/channel/'+encodeURIComponent(c.bj_id)+'/board?perPage=10&type=all&orderBy=reg_date&page=1';
+   const response=await fetch(endpoint,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(7000)});
+   if(!response.ok)throw Error('HTTP '+response.status);
+   const data=await response.json();
+   if(!Array.isArray(data.contents))throw Error('게시판 응답 형식 변경');
+   const posts=[...data.contents,...(Array.isArray(data.noticeData)?data.noticeData:[])].filter(x=>String(x.userId)===c.bj_id&&/^\d+$/.test(String(x.titleNo||''))).sort((a,b)=>Number(b.titleNo)-Number(a.titleNo));
+   const baseline=await db.prepare("SELECT v FROM soop_notice_config WHERE k=?").bind('baseline:'+c.bj_id).first();
+   const newest=posts.length?String(posts[0].titleNo):null;
+   if(!baseline){if(newest)await db.prepare("INSERT OR IGNORE INTO soop_notice_config(k,v) VALUES(?,?)").bind('baseline:'+c.bj_id,newest).run();continue}
+   for(const p of posts.filter(x=>BigInt(String(x.titleNo))>BigInt(baseline.v)).slice(0,3)){
+    const url='https://www.sooplive.com/station/'+c.bj_id+'/post/'+p.titleNo;
+    await ingestNotice(db,c.bj_id,p.titleNo,String(p.title||'공지'),url);found++;
+   }
+   if(newest&&BigInt(newest)>BigInt(baseline.v))await db.prepare("UPDATE soop_notice_config SET v=? WHERE k=?").bind(newest,'baseline:'+c.bj_id).run();
+  }catch(e){errors.push(c.bj_id+': '+String(e.message).slice(0,90))}
+ }
+ await db.prepare("INSERT INTO soop_notice_log(created,action,detail) VALUES(?,?,?)").bind(stamp(),'scan',JSON.stringify({found,errors})).run();
+ return {found,errors,channels:channels.results.length};
+}
+async function applyNotice(db,id){
+ const cfg=await noticeConfig(db),post=await db.prepare('SELECT * FROM soop_notice_posts WHERE id=?').bind(id).first();
+ if(!post||post.status!=='pending')throw Error('대기 중인 공지가 아닙니다');
+ const player=await db.prepare('SELECT price FROM players WHERE id=?').bind(post.player_id).first();
+ if(!player)throw Error('상장된 선수가 없습니다');
+ const kstDay=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+ const previous=await db.prepare("SELECT COALESCE(SUM(applied_pct),0) AS total FROM soop_notice_posts WHERE player_id=? AND status='applied' AND substr(datetime(reviewed,'+9 hours'),1,10)=?").bind(post.player_id,kstDay).first();
+ const remaining=Math.max(0,cfg.daily_cap-Number(previous.total||0)),pct=Math.min(Math.max(0,post.proposed_pct),remaining);
+ if(!cfg.price_effect_enabled)throw Error('공지 주가 반영 스위치가 OFF입니다');
+ const price=Math.max(100,Math.round(player.price*(1+pct/100)));
+ const result=await db.prepare("UPDATE soop_notice_posts SET status='applied',reviewed=?,applied_pct=? WHERE id=? AND status='pending'").bind(stamp(),pct,id).run();
+ if(!result.meta?.changes)throw Error('이미 처리된 공지입니다');
+ await db.batch([
+  db.prepare('UPDATE players SET price=?,updated=? WHERE id=?').bind(price,stamp(),post.player_id),
+  db.prepare('INSERT OR IGNORE INTO ticks(player,match_id,created,price,change_pct,reason) VALUES(?,?,?,?,?,?)').bind(post.player_id,'soop-notice:'+post.bj_id+':'+post.post_no,stamp(),price,pct,'SOOP 공지 이벤트: '+post.category)
+ ]);
+ return {price,pct};
+}
+
 async function soopSchema(db){
  await db.prepare("CREATE TABLE IF NOT EXISTS soop_candidates (bj_id TEXT PRIMARY KEY,bj_nick TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',viewers INTEGER NOT NULL DEFAULT 0,channel_url TEXT NOT NULL DEFAULT '',first_seen TEXT NOT NULL,last_seen TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',pubg_name TEXT,platform TEXT,player_id TEXT)").run();
 }
@@ -418,10 +502,15 @@ async function soopCandidates(db){
 }
 
 export default {
- async scheduled(event,env,ctx){ctx.waitUntil(sync(env).catch(async e=>{try{await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message||e)).run()}catch(_){}}));},
+ async scheduled(event,env,ctx){ctx.waitUntil(scanNoticeBoards(env).catch(()=>{}));ctx.waitUntil(sync(env).catch(async e=>{try{await env.DB.prepare("INSERT INTO meta(k,v) VALUES('sync_error',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(e.message||e)).run()}catch(_){}}));},
  async fetch(request,env){
  const url=new URL(request.url),path=url.pathname;
  try{
+  if(path==='/api/soop/notices'&&request.method==='GET'){
+   const config=await noticeConfig(env.DB);
+   const posts=await env.DB.prepare('SELECT n.*,p.name FROM soop_notice_posts n LEFT JOIN players p ON p.id=n.player_id ORDER BY n.id DESC LIMIT 100').all();
+   return J({config,posts:posts.results,collector_authorized:env.SOOP_BOARD_FETCH_APPROVED==='true'});
+  }
   if(path==='/api/market/effects'&&request.method==='GET'){
    const config=await getEffectConfig(env.DB);return J({config,mode:'live_when_enabled'});
   }
@@ -472,6 +561,24 @@ export default {
    if(['/api/owner/state','/api/owner/fund','/api/owner/trade'].includes(path))return J(await ownerAction(env,path,body));
    if(path.startsWith('/api/investors/'))return J({error:'시청자 거래 기능이 비활성화되었습니다'},403);
 
+   if(path==='/api/soop/notices/config'){
+    const old=await noticeConfig(env.DB),next={...old,auto_check:body.auto_check===true,interval_minutes:10,approval_mode:'optional',daily_cap:2,price_effect_enabled:body.price_effect_enabled===true};
+    await env.DB.prepare("INSERT INTO soop_notice_config(k,v) VALUES('active',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(next)).run();
+    return J({ok:true,config:next,collector_authorized:env.SOOP_BOARD_FETCH_APPROVED==='true'});
+   }
+   if(path==='/api/soop/notices/scan')return J(await scanNoticeBoards(env));
+   if(path==='/api/soop/notices/add'){
+    const u=new URL(String(body.url||''));if(u.hostname!=='www.sooplive.com')throw Error('SOOP 공식 게시글 주소만 허용');
+    const match=u.pathname.match(/^\/station\/([a-zA-Z0-9_-]+)\/post\/(\d+)$/);if(!match)throw Error('공지 URL 형식 오류');
+    return J({ok:true,classification:await ingestNotice(env.DB,match[1],match[2],String(body.title||''),u.origin+u.pathname)});
+   }
+   if(path==='/api/soop/notices/review'){
+    await noticeSchema(env.DB);const id=Number(body.id);
+    if(!Number.isSafeInteger(id)||id<=0)throw Error('공지 ID 오류');
+    if(body.action==='reject'){const r=await env.DB.prepare("UPDATE soop_notice_posts SET status='rejected',reviewed=? WHERE id=? AND status='pending'").bind(stamp(),id).run();return J({ok:!!r.meta?.changes})}
+    if(body.action!=='approve')throw Error('승인 또는 거절 선택');
+    return J({ok:true,...await applyNotice(env.DB,id)});
+   }
    if(path==='/api/effects/config'){
     const next=validateEffects(body),old=await getEffectConfig(env.DB);
     await env.DB.batch([
