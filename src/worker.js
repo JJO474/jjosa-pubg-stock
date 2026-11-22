@@ -466,6 +466,20 @@ async function applyNotice(db,id){
  return {price,pct};
 }
 
+
+async function stockImageSchema(db){
+ await db.prepare("CREATE TABLE IF NOT EXISTS stock_images(player_id TEXT PRIMARY KEY,image_data TEXT NOT NULL,updated TEXT NOT NULL)").run();
+}
+function validateStockImage(value){
+ if(typeof value!=='string'||value.length>145000||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value))throw Error('PNG/JPG/WebP 이미지 100KB 이하만 등록할 수 있습니다');
+ return value;
+}
+async function stockImageMap(db){
+ await stockImageSchema(db);
+ const r=await db.prepare('SELECT player_id,image_data FROM stock_images').all();
+ return Object.fromEntries(r.results.map(x=>[x.player_id,x.image_data]));
+}
+
 async function soopSchema(db){
  await db.prepare("CREATE TABLE IF NOT EXISTS soop_candidates (bj_id TEXT PRIMARY KEY,bj_nick TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',viewers INTEGER NOT NULL DEFAULT 0,channel_url TEXT NOT NULL DEFAULT '',first_seen TEXT NOT NULL,last_seen TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',pubg_name TEXT,platform TEXT,player_id TEXT)").run();
 }
@@ -538,7 +552,8 @@ export default {
    const [p,t,last,error,halt]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first(),env.DB.prepare("SELECT v FROM settings WHERE k='market_halt'").first()]);
    const queue=await env.DB.prepare("SELECT name,q.status,q.last_checked,q.last_error,q.applied FROM sync_queue q JOIN players p ON p.id=q.player ORDER BY p.name").all().catch(()=>({results:[]}));
    const completed=queue.results.filter(x=>x.status==='done').length;
-   return J({players:p.results,ticks:t.results,market_halted:halt?.v==='1',connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed,queue:queue.results}});
+   const stockImages=await stockImageMap(env.DB);
+   return J({players:p.results,stock_images:stockImages,ticks:t.results,market_halted:halt?.v==='1',connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed,queue:queue.results}});
   }
   if(path==='/api/player/history'&&request.method==='GET'){
    const id=url.searchParams.get('id')||'';if(!id||id.length>150)return J({error:'올바른 선수 ID가 필요합니다'},400);
@@ -616,6 +631,23 @@ export default {
    if(path==='/api/soop/scan')return J({error:'자동 탐색은 비활성화되었습니다. 원하는 스트리머를 직접 추가하세요.'},410);
    if(path==='/api/soop/reject'){await soopSchema(env.DB);const id=String(body.bj_id||'');const found=await env.DB.prepare('SELECT status FROM soop_candidates WHERE bj_id=?').bind(id).first();if(!found)throw Error('후보를 찾지 못했습니다');if(found.status==='approved')throw Error('이미 상장된 계정은 후보 거절로 삭제할 수 없습니다');await env.DB.prepare("UPDATE soop_candidates SET status='rejected' WHERE bj_id=?").bind(id).run();return J({ok:true});}
    if(path==='/api/soop/approve'){await soopSchema(env.DB);const id=String(body.bj_id||''),name=String(body.pubg_name||'').trim(),platform=String(body.platform||'steam');const found=await env.DB.prepare('SELECT status FROM soop_candidates WHERE bj_id=?').bind(id).first();if(!found||found.status!=='pending')throw Error('승인 대기 중인 후보만 등록할 수 있습니다');if(!name||name.length>64)throw Error('관리자가 확인한 PUBG 게임 닉네임을 입력하세요');const result=await register(env,name,platform);await env.DB.prepare("UPDATE soop_candidates SET status='approved',pubg_name=?,platform=?,player_id=? WHERE bj_id=?").bind(name,platform,result.id,id).run();return J({ok:true,...result});}
+   if(path==='/api/stock/image'){
+    const id=String(body.player_id||'');
+    if(!id||!await env.DB.prepare('SELECT id FROM players WHERE id=?').bind(id).first())throw Error('상장된 종목을 선택하세요');
+    await stockImageSchema(env.DB);
+    if(body.remove===true){await env.DB.prepare('DELETE FROM stock_images WHERE player_id=?').bind(id).run();return J({ok:true,removed:true})}
+    const img=validateStockImage(body.image_data);
+    await env.DB.prepare("INSERT INTO stock_images(player_id,image_data,updated) VALUES(?,?,?) ON CONFLICT(player_id) DO UPDATE SET image_data=excluded.image_data,updated=excluded.updated").bind(id,img,stamp()).run();
+    return J({ok:true,player_id:id});
+   }
+   if(path==='/api/stock/list-with-image'){
+    const result=await register(env,String(body.name||'').trim(),String(body.platform||'steam'));
+    if(body.image_data){
+     const img=validateStockImage(body.image_data);await stockImageSchema(env.DB);
+     await env.DB.prepare("INSERT INTO stock_images(player_id,image_data,updated) VALUES(?,?,?)").bind(result.id,img,stamp()).run();
+    }
+    return J({ok:true,...result});
+   }
    if(path==='/api/players')return J({ok:true,...await register(env,String(body.name||'').trim(),String(body.platform||'steam'))});
    if(path==='/api/sync')return J({ok:true,status:await sync(env)});
    if(path==='/api/delete'){await env.DB.prepare('DELETE FROM players WHERE id=?').bind(body.id).run();return J({ok:true});}
