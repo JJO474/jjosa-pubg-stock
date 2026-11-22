@@ -571,7 +571,7 @@ export default {
    const adminCredential=env.ADMIN_TOKEN||env.ADMIN_PASSWORD;
    if(!adminCredential)return J({error:'관리자 인증키가 현재 실행 중인 Worker에 연결되지 않았습니다. /api/health 확인'},503);
    if(request.headers.get('X-Admin-Token')!==adminCredential)return J({error:'관리자 인증값이 올바르지 않습니다'},403);
-   if(Number(request.headers.get('content-length')||0)>10000)return J({error:'요청이 너무 큽니다'},413);
+   if(Number(request.headers.get('content-length')||0)>(path==='/api/stock/image'||path==='/api/stock/list-with-image'?160000:10000))return J({error:'요청이 너무 큽니다'},413);
    const body=await request.json().catch(()=>({}));
    if(['/api/owner/state','/api/owner/fund','/api/owner/trade'].includes(path))return J(await ownerAction(env,path,body));
    if(path.startsWith('/api/investors/'))return J({error:'시청자 거래 기능이 비활성화되었습니다'},403);
