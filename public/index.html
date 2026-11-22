@@ -70,9 +70,10 @@ function diff(){const t=market.ticks.filter(t=>t.player===selected);return t[0]?
 function signed(n){return (n>0?'+':'')+Number(n).toFixed(2)+'%'}
 function color(n){return n>0?'up':n<0?'down':''}
 function choose(id){selected=id;loadJjsCandles(id);rememberRecent(id);setView('trade');render();loadPlayerHistory(id)}
+function stockPhoto(id,size=32){const data=market?.stock_images?.[id];return data?'<img alt="" src="'+data+'" width="'+size+'" height="'+size+'" style="width:'+size+'px;height:'+size+'px;object-fit:cover;border-radius:50%;flex-shrink:0;vertical-align:middle;margin-right:6px">':''}
 function render(){
  const p=priceOf(),ch=diff(),h=holdingOf();
- $('#headlineName').innerHTML=p?esc(p.name)+' <span class="sub">· '+esc(p.platform.toUpperCase())+' · PUBG 경쟁전 · 일반전</span>':'선수를 선택하세요';
+ $('#headlineName').innerHTML=p?(stockPhoto(p.id,34)+esc(p.name))+' <span class="sub">· '+esc(p.platform.toUpperCase())+' · PUBG 경쟁전 · 일반전</span>':'선수를 선택하세요';
  $('#headlinePrice').textContent=p?fmt(p.price)+' P':'—';$('#headlineChange').textContent=p?signed(ch):'';$('#headlineChange').className=color(ch);
  $('#rp').textContent=p?(p.rp??'미확인'):'—';$('#listed').textContent=market.players.length;
  $('#latest').textContent=market.ticks.length?new Date(market.ticks[0].created).toLocaleDateString('ko-KR'):'기록 없음';
@@ -80,7 +81,7 @@ function render(){
  $('#detailPrice').textContent=p?fmt(p.price)+' P':'—';$('#detailChange').textContent=p?signed(ch):'—';$('#detailChange').className=color(ch);
  $('#detailRp').textContent=p?(p.rp??'미확인'):'—';
  $('#orderPrice').value=p?fmt(p.price)+' P':'—';$('#playerSelect').innerHTML=market.players.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');$('#playerSelect').value=selected||'';
- $('#stocks').innerHTML=market.players.map(x=>{const t=market.ticks.find(t=>t.player===x.id),v=t?.change_pct||0;return '<button class="stock-item '+(x.id===selected?'active':'')+'" data-id="'+esc(x.id)+'"><span><b>'+esc(x.name)+'</b><small>'+esc(x.platform.toUpperCase())+' · RP '+esc(x.rp??'—')+'</small></span><span style="text-align:right"><b>'+fmt(x.price)+' P</b><small class="'+color(v)+'">'+signed(v)+'</small></span></button>'}).join('')||'<div class="panel-body sub">등록된 선수가 없습니다. 관리자 페이지에서 추가해 주세요.</div>';
+ $('#stocks').innerHTML=market.players.map(x=>{const t=market.ticks.find(t=>t.player===x.id),v=t?.change_pct||0;return '<button class="stock-item '+(x.id===selected?'active':'')+'" data-id="'+esc(x.id)+'"><span style="display:flex;align-items:center;gap:8px">'+stockPhoto(x.id,32)+'<span><b>'+esc(x.name)+'</b><small>'+esc(x.platform.toUpperCase())+' · RP '+esc(x.rp??'—')+'</small></span></span><span style="text-align:right"><b>'+fmt(x.price)+' P</b><small class="'+color(v)+'">'+signed(v)+'</small></span></button>'}).join('')||'<div class="panel-body sub">등록된 선수가 없습니다. 관리자 페이지에서 추가해 주세요.</div>';
  document.querySelectorAll('.stock-item').forEach(b=>b.onclick=()=>choose(b.dataset.id));
  $('#events').innerHTML=market.ticks.slice(0,12).map(t=>'<div class="event"><span>'+esc(market.players.find(p=>p.id===t.player)?.name||'선수')+' <small>'+esc(t.reason)+'</small></span><b class="'+color(t.change_pct)+'">'+signed(t.change_pct)+'</b></div>').join('')||'<div class="panel-body sub">아직 반영된 경기 기록이 없습니다.</div>';
  drawChart();drawBook();drawAccount();drawOrder();drawMarketPages();drawPerformance();
