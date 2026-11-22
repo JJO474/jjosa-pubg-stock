@@ -70,6 +70,7 @@ function diff(){const t=market.ticks.filter(t=>t.player===selected);return t[0]?
 function signed(n){return (n>0?'+':'')+Number(n).toFixed(2)+'%'}
 function color(n){return n>0?'up':n<0?'down':''}
 function choose(id){selected=id;loadJjsCandles(id);rememberRecent(id);setView('trade');render();loadPlayerHistory(id)}
+function stockAvatar(p,cls){const data=market?.stock_images?.[p.id];return data?'<img class="'+cls+'" alt="" src="'+data+'" style="object-fit:cover;display:block">':'<span class="'+cls+'">'+esc(p.name.slice(0,1).toUpperCase())+'</span>'}
 function stockPhoto(id,size=32){const data=market?.stock_images?.[id];return data?'<img alt="" src="'+data+'" width="'+size+'" height="'+size+'" style="width:'+size+'px;height:'+size+'px;object-fit:cover;border-radius:50%;flex-shrink:0;vertical-align:middle;margin-right:6px">':''}
 function render(){
  const p=priceOf(),ch=diff(),h=holdingOf();
