@@ -51,7 +51,7 @@ async function register(env,name,platform){
  }catch(e){rankedStatus='pending';}
  return {id:p.id,rankedStatus};
 }
-const EFFECT_DEFAULTS={momentum:{enabled:false,weight:100,cap:1.2},chicken:{enabled:false,weight:100,cap:1.2},surprise:{enabled:false,weight:100,cap:1},rp:{enabled:false,weight:100,cap:.8},mood:{enabled:false,weight:100,cap:.5},record:{enabled:false,weight:100,cap:.8}};
+const EFFECT_DEFAULTS={momentum:{enabled:false,weight:100,cap:1.2},chicken:{enabled:false,weight:100,cap:1.2},surprise:{enabled:false,weight:100,cap:1},rp:{enabled:false,weight:100,cap:.8},mood:{enabled:false,weight:100,cap:.5},record:{enabled:false,weight:100,cap:.8},rival:{enabled:false,weight:100,cap:.6},dormant:{enabled:false,weight:100,cap:.6},event:{enabled:false,weight:100,cap:1}};
 async function effectSchema(db){
  await db.prepare("CREATE TABLE IF NOT EXISTS price_effect_settings (k TEXT PRIMARY KEY,v TEXT NOT NULL,updated TEXT NOT NULL)").run();
  await db.prepare("CREATE TABLE IF NOT EXISTS price_effect_events (player TEXT NOT NULL,match_id TEXT NOT NULL,created TEXT NOT NULL,base_pct REAL NOT NULL,bonus_pct REAL NOT NULL,final_pct REAL NOT NULL,previous_price INTEGER NOT NULL,new_price INTEGER NOT NULL,details TEXT NOT NULL,PRIMARY KEY(player,match_id))").run();
@@ -73,7 +73,7 @@ async function getEffectConfig(db){
  return row?validateEffects(JSON.parse(row.v)):validateEffects({effects:EFFECT_DEFAULTS,globalCap:3});
 }
 function effectCalculation(input,config){
- const {base,history,kills,damage,rank,marketScore,rpDelta,rpTierChange}=input,detail={};
+ const {base,history,kills,damage,rank,marketScore,rpDelta,rpTierChange,rivalScore,dormantDays,eventPct}=input,detail={};
  const add=(id,raw)=>{const c=config.effects[id];if(c.enabled&&raw){detail[id]=Number(clamp(raw*c.weight/100,-c.cap,c.cap).toFixed(4))}};
  const games=history.filter(t=>t.kills!=null);
  let streak=0;
@@ -96,13 +96,30 @@ function effectCalculation(input,config){
  const k=Number(kills)>highKills,d=Number(damage)>highDamage;
  add('record',k&&d?0.8:(k||d?0.5:0));
  }
+ if(Number.isFinite(rivalScore))add('rival',rivalScore);
+ if(Number.isFinite(dormantDays)&&dormantDays>=14)add('dormant',dormantDays>=30?-.6:-.3);
+ if(Number.isFinite(eventPct))add('event',eventPct);
  const rawBonus=Object.values(detail).reduce((a,b)=>a+b,0),bonus=clamp(rawBonus,-config.globalCap,config.globalCap);
  return {details:detail,raw_bonus_pct:Number(rawBonus.toFixed(4)),bonus_pct:Number(bonus.toFixed(4)),final_pct:Number(clamp(base+bonus,-10,10).toFixed(4))};
 }
 async function calculateMatchEffects(db,p,input,config){
  const history=await db.prepare('SELECT kills,damage,rank,change_pct FROM ticks WHERE player=? AND kills IS NOT NULL ORDER BY id DESC LIMIT 30').bind(p.id).all();
- // Market sentiment is display-only until a versioned, pre-event snapshot is available.
- return effectCalculation({...input,history:history.results,marketScore:null},config);
+ // Compare only pre-existing completed match records; do not retroactively reprice peers.
+ let rivalScore=null,dormantDays=null,eventPct=null;
+ if(config.effects.rival.enabled){
+  const peers=await db.prepare('SELECT player,AVG(kills*0.8+damage/200.0) AS avg_score FROM (SELECT player,kills,damage,ROW_NUMBER() OVER(PARTITION BY player ORDER BY id DESC) AS rn FROM ticks WHERE kills IS NOT NULL AND player<>?) WHERE rn<=5 GROUP BY player HAVING COUNT(*)>=3 ORDER BY ABS(avg_score-?) ASC LIMIT 1').bind(p.id,Number(input.kills||0)*.8+Number(input.damage||0)/200).all();
+  const peer=peers.results[0];
+  if(peer){const score=Number(input.kills||0)*.8+Number(input.damage||0)/200;rivalScore=score>Number(peer.avg_score)*1.2?.4:score<Number(peer.avg_score)*.8?-.4:0}
+ }
+ if(config.effects.dormant.enabled){
+  const last=await db.prepare('SELECT created FROM ticks WHERE player=? AND kills IS NOT NULL ORDER BY id DESC LIMIT 1').bind(p.id).first();
+  if(last?.created)dormantDays=Math.max(0,(Date.parse(stamp())-Date.parse(last.created))/86400000);
+ }
+ if(config.effects.event.enabled){
+  const row=await db.prepare("SELECT v FROM settings WHERE k='active_market_event'").first();
+  if(row){try{const e=JSON.parse(row.v);if(Date.parse(e.expires)>Date.now())eventPct=Number(e.pct)}catch(_){}}
+ }
+ return effectCalculation({...input,history:history.results,marketScore:null,rivalScore,dormantDays,eventPct},config);
 }
 
 async function pollPlayer(env,p){
@@ -593,6 +610,13 @@ export default {
     if(body.action==='reject'){const r=await env.DB.prepare("UPDATE soop_notice_posts SET status='rejected',reviewed=? WHERE id=? AND status='pending'").bind(stamp(),id).run();return J({ok:!!r.meta?.changes})}
     if(body.action!=='approve')throw Error('승인 또는 거절 선택');
     return J({ok:true,...await applyNotice(env.DB,id)});
+   }
+   if(path==='/api/market/event'){
+    const pct=Number(body.pct),hours=Number(body.hours),title=String(body.title||'돌발 시장 이벤트').trim().slice(0,80);
+    if(!Number.isFinite(pct)||Math.abs(pct)>1||!Number.isFinite(hours)||hours<1||hours>72)throw Error('이벤트 변동률은 -1~1%, 지속 시간은 1~72시간');
+    const e={title,pct,hours,expires:new Date(Date.now()+hours*3600000).toISOString()};
+    await env.DB.prepare("INSERT INTO settings(k,v) VALUES('active_market_event',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(e)).run();
+    return J({ok:true,event:e});
    }
    if(path==='/api/effects/config'){
     const next=validateEffects(body),old=await getEffectConfig(env.DB);
