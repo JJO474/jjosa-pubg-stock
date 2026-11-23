@@ -142,18 +142,27 @@ body{background:#f3f6fa;color:#1d2939}
 .steam-board-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#242b38;color:#fff;gap:12px}.steam-board-head strong{font-size:14px}.steam-board-head small{display:block;color:#aabbd4;font-size:10px;margin-top:3px}.steam-board-head>span{font-size:10px;color:#c7d4e7}
 .steam-board-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.steam-board-row{display:grid;grid-template-columns:32px minmax(0,1fr) 84px 60px;align-items:center;gap:8px;min-height:38px;padding:5px 13px;border-bottom:1px solid #edf0f5;font-size:11px}.steam-board-row:nth-child(4n+1),.steam-board-row:nth-child(4n+2){background:#fafcff}.steam-board-row:nth-child(-n+3){background:#fff9e8}.steam-board-row .position{font-weight:800;color:#6b7b91}.steam-board-row .player{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.steam-board-row .points{font-weight:800;text-align:right;color:#283e5f}.steam-board-row .ratio{text-align:right;color:#e34a59}.steam-board-row .listed{color:#287de8;font-size:9px;margin-left:4px}.steam-board-empty{padding:20px;color:#8b96a6;grid-column:1/-1}.steam-board-foot{display:flex;justify-content:space-between;align-items:center;padding:8px 13px;gap:10px;background:#f7f9fd;color:#8290a4;font-size:10px}.steam-board-foot button{border:1px solid #d4e4fb;background:#fff;color:#2878d8;border-radius:6px;padding:6px 10px;font-weight:750}.steam-leaderboard:not(.expanded) .steam-board-row:nth-child(n+11){display:none}
 @media(max-width:900px){.steam-board-list{grid-template-columns:1fr}.steam-board-row{grid-template-columns:26px minmax(0,1fr) 75px 52px}.steam-leaderboard:not(.expanded) .steam-board-row:nth-child(n+11){display:none}}
+</style><style>
+.indices-with-board{grid-template-columns:minmax(215px,1fr) minmax(0,3.8fr)!important;align-items:stretch;gap:12px!important;min-height:0!important}
+.indices-with-board .index-feature{min-height:205px}
+.indices-with-board .steam-leaderboard{margin:0;min-width:0;box-shadow:none}
+.indices-with-board .steam-board-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+.indices-with-board .steam-board-row{min-height:30px;padding:4px 10px}
+.indices-with-board .steam-board-row:nth-child(n){display:grid}
+.steam-rank-pagination{display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.steam-rank-pagination button{border:1px solid #d9e3f2;background:#fff;border-radius:5px;padding:5px 8px;color:#456384;cursor:pointer}
+.steam-rank-pagination button.active{background:#2d80e8;color:#fff;border-color:#2d80e8;font-weight:800}
+.steam-rank-pagination button:disabled{opacity:.4;cursor:default}
+.steam-rank-pagination span{color:#697a90;margin-right:5px}
+@media(max-width:1099px){.indices-with-board{grid-template-columns:1fr!important}.indices-with-board .index-feature{min-height:100px;grid-column:auto}.indices-with-board .steam-board-list{grid-template-columns:1fr}}
+@media(max-width:650px){.steam-board-foot{flex-wrap:wrap}.steam-rank-pagination{justify-content:center;width:100%}}
 </style></head><body><div class="shell">
 <header class="top"><div class="logo"><i></i><b>쪼사</b>증권</div><nav id="mainNav"><a href="#home" data-view="home" class="active">홈</a><a href="#home" id="feedNav">피드</a><a href="#explore" data-view="explore">주식 골라보기</a><a href="#trade" data-view="trade">종목 거래</a><a href="#account" data-view="account">내 계좌</a><a href="/admin">관리자</a></nav><input class="search" id="globalSearch" placeholder="⌕ 선수 종목 검색" aria-label="선수 종목 검색"><button id="login" class="auth" type="button">관리자 인증</button></header>
 <div class="notice-strip">📢　쪼사증권은 PUBG 경기 결과를 기반으로 주가가 움직이는 가상 증권시장입니다.　 <a href="/admin">운영 안내 ›</a></div>
 <div class="app-layout"><div class="app-main"><section id="homeView" class="page-view">
-<section class="steam-leaderboard"><div class="steam-board-head"><div><strong>🏆 Steam 경쟁전 TOP 500</strong><small>아시아 · 스쿼드 FPP · PUBG 공식 순위</small></div><span id="steamRankUpdated">순위 불러오는 중</span></div><div class="steam-board-list" id="steamRankList"><div class="steam-board-empty">경쟁전 순위를 불러오는 중입니다.</div></div><div class="steam-board-foot"><span>공식 순위는 주가 계산에 중복 반영되지 않습니다.</span><button type="button" id="steamRankMore">500위까지 펼치기</button></div></section><div class="market-overview"><div class="market-caption"><span>● 국내 시장 운영 중</span><span>● PUBG 경기 결과 기반 시세</span><span id="marketStatusTop">15초마다 화면 갱신</span></div>
-<div class="indices">
-<div class="index-feature"><small>쪼사 종합지수 <span class="tag">동일가중</span></small><strong id="indexValue">—</strong><span id="indexChange">기준 지수 1,000</span><svg id="indexSpark" viewBox="0 0 280 85" preserveAspectRatio="none"></svg><small>상장된 선수의 현재 주가로 계산</small></div>
-<div class="index-stack"><div><small>상장 선수</small><b id="homeListed">—</b><span>등록된 선수 전체</span></div><div><small>상승 / 하락</small><b id="breadth">—</b><span>최근 반영 변동 기준</span></div></div>
-<div class="index-stack"><div><small>최근 반영</small><b id="homeUpdated">—</b><span>경기 결과 자동 반영</span></div><div><small>기준 주가</small><b>10,000 P</b><span>상장 최초 기준가</span></div></div>
-<div class="index-stack"><div><small>상승 종목 수</small><b id="upCount">—</b><span>최근 변동 기준</span></div><div><small>하락 종목 수</small><b id="downCount">—</b><span>최근 변동 기준</span></div></div>
-<div class="schedule-card"><b>주요 일정</b><p>● 경기 결과 자동 수집</p><p>● 15초 간격 화면 갱신</p><p>● 관리자가 시장 거래 제어</p><small>가상 포인트 거래 · 현금 거래 없음</small></div>
-</div></div>
+<div class="market-overview"><div class="market-caption"><span>● 국내 시장 운영 중</span><span>● PUBG 경기 결과 기반 시세</span><span id="marketStatusTop">15초마다 화면 갱신</span></div>
+<div class="indices indices-with-board"><div class="indices">
+<div class="index-feature"><small>쪼사 종합지수 <span class="tag">동일가중</span></small><strong id="indexValue">—</strong><span id="indexChange">기준 지수 1,000</span><svg id="indexSpark" viewBox="0 0 280 85" preserveAspectRatio="none"></svg><small>상장된 선수의 현재 주가로 계산</small></div><section class="steam-leaderboard"><div class="steam-board-head"><div><strong>🏆 Steam 경쟁전 TOP 500</strong><small>아시아 · 스쿼드 FPP · PUBG 공식 순위</small></div><span id="steamRankUpdated">순위 불러오는 중</span></div><div class="steam-board-list" id="steamRankList"><div class="steam-board-empty">경쟁전 순위를 불러오는 중입니다.</div></div><div class="steam-board-foot"><span>공식 순위는 주가 계산에 중복 반영되지 않습니다.</span><nav id="steamRankPagination" class="steam-rank-pagination" aria-label="경쟁전 랭킹 페이지"></nav></div></section></div></div>
 <div class="market-section"><div class="market-section-tabs"><button class="active" type="button">실시간 차트</button><button type="button" id="homeShowNews">시장 소식</button><button type="button" id="homeShowPortfolio">내 투자</button></div>
 <div class="market-workspace"><div class="market-table-area"><div class="market-filters"><button class="active" data-rank="all">전체</button><button data-rank="up">급상승</button><button data-rank="down">급하락</button><button data-rank="price">주가 높은 순</button><button data-rank="turnover">거래대금</button><button data-rank="volume">거래량</button><button data-rank="popular">인기 종목</button><button data-rank="name">이름순</button><span class="market-table-status" id="marketStatus">데이터 조회 중</span></div>
 <div class="market-columns"><span>순위 · 종목명</span><span>현재가</span><span>등락률</span><span>거래대금</span><span>경쟁전 RP</span><span>경기 반영</span></div><div id="homeStocks" class="market-table"></div><nav id="homeStockPagination" class="stock-pagination" aria-label="종목 페이지"></nav></div>
@@ -482,17 +491,25 @@ $('#jjsPeriod').onchange=()=>{if(selected)loadJjsCandles(selected)};
 $('#tickerToggle').onclick=()=>{const track=$('#tickerTrack'),paused=track.classList.toggle('paused');tickerPaused=paused;$('#tickerToggle').textContent=paused?'▶':'❚❚';$('#tickerToggle').setAttribute('aria-pressed',String(paused));$('#tickerToggle').setAttribute('aria-label',paused?'시세 흐름 재생':'시세 흐름 일시정지')};
 setView(location.hash.replace('#','')||'home');loadJjsAnalytics();setInterval(loadJjsAnalytics,60000);
 const oldDraw=drawAccount;drawAccount=function(){oldDraw();$('#fundButton').disabled=!owner};load();restore();setInterval(load,15000);
-let steamLeaderboardLoaded=false;
+let steamRankEntries=[],steamRankPage=1;
+const STEAM_RANK_PAGE_SIZE=20;
+function drawSteamRankPage(){
+ const list=document.getElementById('steamRankList'),nav=document.getElementById('steamRankPagination');if(!list||!nav)return;
+ const total=Math.max(1,Math.ceil(steamRankEntries.length/STEAM_RANK_PAGE_SIZE));steamRankPage=Math.min(total,Math.max(1,steamRankPage));
+ const registered=new Set((market.players||[]).filter(p=>p.platform==='steam').map(p=>p.id));
+ list.innerHTML=steamRankEntries.slice((steamRankPage-1)*STEAM_RANK_PAGE_SIZE,steamRankPage*STEAM_RANK_PAGE_SIZE).map(x=>'<div class="steam-board-row"><span class="position">'+x.rank+'</span><span class="player" title="'+esc(x.name)+'">'+esc(x.name)+(registered.has(x.id)?'<span class="listed">● 상장</span>':'')+'</span><span class="points">'+fmt(x.rp)+' RP</span><span class="ratio">'+(x.kda==null?'—':Number(x.kda).toFixed(2))+'</span></div>').join('')||'<div class="steam-board-empty">현재 순위 데이터가 없습니다.</div>';
+ const lo=Math.max(1,steamRankPage-2),hi=Math.min(total,lo+4);
+ nav.innerHTML='<span>'+steamRankPage+' / '+total+' 페이지</span><button data-steam-page="'+(steamRankPage-1)+'" '+(steamRankPage===1?'disabled':'')+'>이전</button>'+Array.from({length:hi-lo+1},(_,i)=>{const p=lo+i;return '<button data-steam-page="'+p+'" class="'+(p===steamRankPage?'active':'')+'">'+p+'</button>'}).join('')+'<button data-steam-page="'+(steamRankPage+1)+'" '+(steamRankPage===total?'disabled':'')+'>다음</button>';
+}
 async function loadSteamLeaderboard(){
  const list=document.getElementById('steamRankList');if(!list)return;
  try{
   const res=await fetch('/api/leaderboard/steam',{cache:'no-store'}),d=await res.json();
   if(!res.ok)throw Error(d.error||'조회 실패');
-  const registered=new Set((market.players||[]).filter(p=>p.platform==='steam').map(p=>p.id));
-  list.innerHTML=(d.entries||[]).map(x=>'<div class="steam-board-row"><span class="position">'+x.rank+'</span><span class="player" title="'+esc(x.name)+'">'+esc(x.name)+(registered.has(x.id)?'<span class="listed">● 상장</span>':'')+'</span><span class="points">'+fmt(x.rp)+' RP</span><span class="ratio">'+(x.kda==null?'—':Number(x.kda).toFixed(2))+'</span></div>').join('')||'<div class="steam-board-empty">현재 순위 데이터가 없습니다.</div>';
+  steamRankEntries=(d.entries||[]).slice(0,500);drawSteamRankPage();
   document.getElementById('steamRankUpdated').textContent=(d.updated?new Date(d.updated).toLocaleString('ko-KR'):'')+(d.stale?' · 이전 자료':'')+' · RP / KDA';
  }catch(e){list.innerHTML='<div class="steam-board-empty">공식 순위 조회 대기: '+esc(String(e.message||e))+'</div>';document.getElementById('steamRankUpdated').textContent='조회 실패'}
 }
-document.getElementById('steamRankMore').addEventListener('click',()=>{const board=document.querySelector('.steam-leaderboard');const expanded=board.classList.toggle('expanded');document.getElementById('steamRankMore').textContent=expanded?'TOP 10만 보기':'500위까지 펼치기'});
+document.getElementById('steamRankPagination').addEventListener('click',e=>{const btn=e.target.closest('[data-steam-page]');if(!btn||btn.disabled)return;steamRankPage=Number(btn.dataset.steamPage);drawSteamRankPage()});
 loadSteamLeaderboard();setInterval(loadSteamLeaderboard,14400000);
 </script></body></html>
