@@ -900,13 +900,13 @@ function forumGenerated(){
  return out;
 }
 const causalScenarios=[
- ['스쿼드 재편 가정','팀원 조합과 역할 분담이 달라진다면','초반 교전 합과 커버 속도 변화로 킬·딜 변동성이 커질 수 있음','다음 경기에서 성적 변화가 확인될 때 주가에 간접 영향'],
- ['맵 집중 연습 가정','특정 맵에 연습 시간을 집중한다면','회전 동선과 생존 순위 개선 가능성, 다른 맵 적응은 변수','맵별 성적 차이가 커지면 투자자들의 평가가 달라질 가능성'],
- ['교전 스타일 변경 가정','공격적인 교전 스타일로 바꾼다면','킬·딜은 늘어도 조기 탈락 위험이 함께 증가','킬·딜 상승과 생존 순위 하락의 균형에 따라 경기 주가 반응 달라질 가능성'],
- ['연속 경기 일정 가정','휴식 없이 여러 경기를 치른다면','집중력과 후반 교전 정확도에 변수가 생길 수 있음','실제 연속 부진이 기록으로 나타날 경우에만 주가 반영'],
- ['무기 메타 변화 가정','AR 중심의 무기 밸런스 변화가 생긴다면','교전 거리와 선호 무기에 따라 킬·딜 효율 변화','실제 패치와 경기 결과가 확인되기 전에는 관찰 포인트']
+ ['주가 변동성 확대, 다음 경기 결과에 시선 집중','최근 시장에서는 경기별 킬·딜 성적이 종목 평가를 좌우하는 주요 변수로 거론된다.','초반 교전에서 높은 피해량을 기록하면 상승 기대가 커질 수 있지만 조기 탈락은 반대 요인이다.','실제 경기 성적이 확인되기 전까지는 변동성 확대 가능성에 주목'],
+ ['생존 순위와 교전 효율, 투자 판단의 핵심 변수로','시장 참가자들이 주목하는 부분은 단순 킬 수보다 생존 순위와 피해량의 조합이다.','상위권 생존과 안정적인 딜량이 동시에 나타날 경우 성적 기반 평가가 개선될 여지가 있다.','다음 경기 결과에 따라 매수·관망 의견이 엇갈릴 전망'],
+ ['상승 기대감 속 단기 차익 실현 경계감','종목을 둘러싼 시장 관심이 커지면서 다음 경기 이후의 가격 방향에 대한 의견이 엇갈린다.','고점 갱신 여부는 경기 성적과 기존 주가 수준에 따라 달라질 수 있다.','실제 거래량이나 투자자 반응을 확인한 보도는 아닌 가상 시장 분석'],
+ ['맵별 성적 차이, 종목 평가 변수로 부상','에란겔·미라마 등 맵 환경에 따라 교전 거리와 이동 경로가 달라질 수 있다.','원거리 교전과 후반 생존에서 어떤 성적을 내는지가 다음 평가의 관전 포인트다.','맵별 실전 기록이 확보되면 가격 기대치가 재조정될 가능성'],
+ ['연속 경기 성적에 주목, 반등 여부가 관건','단일 경기보다 여러 경기의 킬·딜·순위 흐름이 종목의 방향성을 가를 수 있다는 분석이다.','연속으로 안정적인 성적을 낸다면 평가 개선 요인이 되지만 편차가 크면 신중론이 우세할 수 있다.','후속 경기 결과 확인 전에는 가상 전망에 해당']
 ];
-function forumCausalPosts(){const ps=(market.players||[]).filter(p=>p.name);const fallback=['등록 선수 A','등록 선수 B','등록 선수 C','등록 선수 D','등록 선수 E'];return causalScenarios.map((v,i)=>{const p=ps.length?ps[(i*7+2)%ps.length]:{id:'scenario-placeholder-'+i,name:fallback[i]};return {type:'scenario',category:'predict',fiction:true,seed:'causal-'+i+'-'+p.id,player:p.id,title:p.name+' · '+v[0].replace(' 가정','')+'에 대한 시장 의견',detail:'요즘 이 선수 종목 얘기 많은데 이런 상황이면 어떻게 될까? 실제 발생한 일은 아니고, 경기 결과와 주가에 미칠 수 있는 영향을 놓고 의견 나눠보자.',cause:v[1],performance:v[2],marketImpact:v[3],tags:[p.name,'가상시나리오','시장전망'],created:new Date(Date.now()-(i*43+11)*60000).toISOString()}})}
+function forumCausalPosts(){const ps=(market.players||[]).filter(p=>p.name&&p.id);if(!ps.length)return [];return causalScenarios.map((v,i)=>{const p=ps[(i*7+2)%ps.length],price=Number(p.price),priceText=Number.isFinite(price)?price.toLocaleString('ko-KR')+' P':'가격 확인 중';return {type:'scenario',category:'predict',fiction:true,seed:'causal-'+i+'-'+p.id,player:p.id,title:p.name+' · '+v[0],detail:p.name+' 종목의 현재 표시 가격은 '+priceText+'. '+v[1]+' 실제 확인된 사건이 아닌 쪼사증권의 가상 시장 기사다.',cause:'시장 분석: '+v[1],performance:'경기 관전 포인트: '+v[2],marketImpact:'주가 전망: '+v[3],tags:[p.name,'가상기사','시장분석'],created:new Date(Date.now()-(i*43+11)*60000).toISOString()}})}
 function forumCategoryOf(x){if(x.type==='memo')return 'free';if(x.type==='community'||x.type==='scenario')return x.category;if(x.type==='game'||x.type==='rank')return 'news';if(x.type==='market')return 'market';return 'free'}
 function forumReplyExamples(x,h){
  const type=forumCategoryOf(x);
