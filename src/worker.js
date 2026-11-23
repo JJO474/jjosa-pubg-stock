@@ -34,6 +34,11 @@ async function steamTop100(env){
   const entries=included.map((x,i)=>{const a=x.attributes||{},v=a.stats||{};return {id:x.id,name:a.name||'',rank:Number(a.rank)||i+1,rp:Number(v.rankPoints)||0,kda:v.kda==null?null:Number(v.kda),tier:v.tier||null,subTier:v.subTier||null}}).sort((a,b)=>a.rank-b.rank).slice(0,500);
   if(!entries.length)throw Error('PUBG 리더보드 결과가 비어 있습니다');
   const result={region:'pc-as',mode:'squad-fpp',season,updated:stamp(),entries};
+  if(prior&&prior.season===season&&Array.isArray(prior.entries)){
+   const old=new Map(prior.entries.map(x=>[x.id,x.rank]));
+   const changes=entries.map(x=>({...x,previous_rank:old.get(x.id)||null,delta:old.has(x.id)?old.get(x.id)-x.rank:null})).filter(x=>x.previous_rank!==null&&x.delta!==0||x.previous_rank===null);
+   await db.prepare("INSERT INTO meta(k,v) VALUES('steam_rank_changes_as_fpp',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify({season,updated:stamp(),changes})).run();
+  }
   await db.prepare("INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(key,JSON.stringify(result)).run();
   return result;
  }catch(e){if(prior)return {...prior,stale:true,error:String(e.message||e)};throw e}
@@ -594,6 +599,42 @@ export default {
    await marketSchema(env.DB);
    const [t,n]=await Promise.all([env.DB.prepare('SELECT t.*,p.name FROM ticks t JOIN players p ON p.id=t.player ORDER BY t.id DESC LIMIT 80').all(),env.DB.prepare('SELECT id,created,title,body,category FROM market_notices ORDER BY id DESC LIMIT 30').all()]);
    return J({news:[...t.results.map(x=>({...tickNews(x,{name:x.name}),player_id:x.player})),...n.results.map(x=>({...x,player_id:null}))].sort((a,b)=>String(b.created).localeCompare(String(a.created))).slice(0,80)});
+  }
+  if(path==='/api/market/fun'&&request.method==='GET'){
+   const db=env.DB;
+   const [recent,players,rankChange]=await Promise.all([
+    db.prepare("SELECT t.id,t.player,t.created,t.price,t.change_pct,t.kills,t.damage,t.rank,t.reason,p.name FROM ticks t JOIN players p ON p.id=t.player ORDER BY t.id DESC LIMIT 100").all(),
+    db.prepare("SELECT id,name,price FROM players").all(),
+    db.prepare("SELECT v FROM meta WHERE k='steam_rank_changes_as_fpp'").first()
+   ]);
+   const items=recent.results;
+   const alerts=items.filter(t=>Math.abs(Number(t.change_pct||0))>=5||Number(t.rank)===1||Number(t.kills)>=10).slice(0,12).map(t=>{
+    const pct=Number(t.change_pct||0),kills=Number(t.kills||0);
+    const kind=Math.abs(pct)>=8?(pct>0?'폭등':'폭락'):Math.abs(pct)>=5?(pct>0?'급등':'급락'):Number(t.rank)===1?'치킨':'고킬';
+    return {id:t.id,player:t.player,name:t.name,kind,pct,kills,rank:t.rank,created:t.created};
+   });
+   const date=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+   const dayStart=date+'T00:00:00+09:00';
+   const dayRows=await db.prepare("SELECT t.player,t.price,t.change_pct,t.created,p.name FROM ticks t JOIN players p ON p.id=t.player WHERE t.created>=? ORDER BY t.player,t.id").bind(dayStart).all();
+   const daily=new Map();
+   for(const t of dayRows.results){
+    const v=Number(t.change_pct||0),end=Number(t.price||0);
+    const start=v===-100?end:end/(1+v/100);
+    if(!daily.has(t.player))daily.set(t.player,{id:t.player,name:t.name,start,price:end});
+    else daily.get(t.player).price=end;
+   }
+   const kings=[...daily.values()].filter(x=>x.start>0).map(x=>({...x,pct:(x.price/x.start-1)*100})).sort((a,b)=>b.pct-a.pct).slice(0,3);
+   const achievements=[];
+   for(const p of players.results){
+    const stats=await db.prepare("SELECT COUNT(CASE WHEN rank=1 THEN 1 END) AS chickens,MAX(kills) AS max_kills,COUNT(*) AS games FROM ticks WHERE player=? AND kills IS NOT NULL").bind(p.id).first();
+    const badges=[];
+    if(Number(stats.chickens)>=10)badges.push('치킨 사냥꾼');
+    if(Number(stats.max_kills)>=10)badges.push('킬 머신');
+    if(Number(stats.games)>=100)badges.push('베테랑');
+    if(badges.length)achievements.push({id:p.id,name:p.name,badges});
+   }
+   let changes=[];try{changes=JSON.parse(rankChange?.v||'{}').changes||[]}catch(_){}
+   return J({alerts,kings,rank_changes:changes.slice(0,10),achievements:achievements.slice(0,10),day:date,generated_at:stamp()});
   }
   if(path==='/api/leaderboard/steam'&&request.method==='GET'){
    try{return J(await steamTop100(env))}catch(e){return J({entries:[],error:String(e.message||e),region:'pc-as',mode:'squad-fpp'},503)}
