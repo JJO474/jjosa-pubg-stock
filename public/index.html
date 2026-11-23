@@ -209,6 +209,11 @@ body{background:#f3f6fa;color:#1d2939}
 .chart-hover-tip .hover-row strong{color:#35465f;font-weight:750}
 .chart-hover-tip .hover-row strong.up{color:#e94d60}.chart-hover-tip .hover-row strong.down{color:#3186ed}
 .chart-hover-line{stroke:#899bb5;stroke-width:1;stroke-dasharray:4 4;pointer-events:none}
+</style><style>
+.home-hover-wrap{position:relative;min-width:0;width:100%}
+.home-hover-wrap>svg{display:block;width:100%;cursor:crosshair}
+.home-hover-tip{display:none;position:absolute;z-index:30;top:6px;left:8px;min-width:150px;max-width:210px;padding:10px 12px;background:rgba(255,255,255,.98);border:1px solid #d2dbe8;border-radius:12px;box-shadow:0 8px 24px rgba(28,52,89,.18);pointer-events:none;font-size:11px;color:#24354b;line-height:1.6}
+.home-hover-tip.visible{display:block}.home-hover-tip>b{display:block;font-size:11px;margin-bottom:5px}.home-hover-tip .hover-row{display:flex;justify-content:space-between;gap:15px}.home-hover-tip .hover-row span{color:#8492a6}.home-hover-tip .hover-row strong{color:#26364e}.home-hover-tip .hover-row strong.up{color:#e94d60}.home-hover-tip .hover-row strong.down{color:#3186ed}
 </style></head><body><div class="shell">
 <header class="top"><div class="logo"><i></i><b>쪼사</b>증권</div><nav id="mainNav"><a href="#home" data-view="home" class="active">홈</a><a href="#home" id="feedNav">피드</a><a href="#explore" data-view="explore">주식 골라보기</a><a href="#trade" data-view="trade">종목 거래</a><a href="#account" data-view="account">내 계좌</a><a href="/admin">관리자</a></nav><input class="search" id="globalSearch" placeholder="⌕ 선수 종목 검색" aria-label="선수 종목 검색"><button id="login" class="auth" type="button">관리자 인증</button></header>
 <div class="notice-strip">📢　쪼사증권은 PUBG 경기 결과를 기반으로 주가가 움직이는 가상 증권시장입니다.　 <a href="/admin">운영 안내 ›</a></div>
@@ -430,6 +435,29 @@ function readIds(key){try{return JSON.parse(localStorage.getItem(key)||'[]')}cat
 function saveIds(key,ids){localStorage.setItem(key,JSON.stringify(ids))}
 function rememberRecent(id){saveIds(recentKey,[id,...readIds(recentKey).filter(x=>x!==id)].slice(0,10))}
 function toggleFavorite(id){const ids=readIds(favoritesKey);saveIds(favoritesKey,ids.includes(id)?ids.filter(x=>x!==id):[id,...ids].slice(0,10));drawMarketPages()}
+function installHomeChartHover(){
+ const svg=document.getElementById('previewChart');if(!svg)return;
+ let wrap=svg.parentElement;
+ if(!wrap.classList.contains('home-hover-wrap')){const w=document.createElement('div');w.className='home-hover-wrap';svg.parentNode.insertBefore(w,svg);w.appendChild(svg);wrap=w}
+ let tip=wrap.querySelector('.home-hover-tip');if(!tip){tip=document.createElement('div');tip.className='home-hover-tip';wrap.appendChild(tip)}
+ const raw=(market.ticks||[]).filter(t=>t.player===selected).slice(0,24).reverse();
+ const vals=raw.map(t=>Number(t.price)).filter(Number.isFinite);
+ if(raw.length<2){svg.onpointermove=null;svg.onpointerleave=null;tip.classList.remove('visible');return}
+ const lo=Math.min(...vals),hi=Math.max(...vals),range=hi-lo||1;
+ svg.onpointerleave=()=>{tip.classList.remove('visible');svg.querySelector('#previewHoverGuide')?.remove()};
+ svg.onpointermove=e=>{
+  const rect=svg.getBoundingClientRect();if(!rect.width)return;
+  const index=Math.max(0,Math.min(raw.length-1,Math.round((e.clientX-rect.left)/rect.width*(raw.length-1))));
+  const t=raw[index],prev=raw[Math.max(0,index-1)],price=Number(t.price),before=index?Number(prev.price):price,pct=Number(t.change_pct??(before?(price/before-1)*100:0));
+  const date=new Date(t.created);const heading=Number.isNaN(date.getTime())?String(t.created||'경기 기록'):date.toLocaleString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const rows=[['주가',fmt(price)+' P'],['이전 주가',fmt(before)+' P'],['등락률',(pct>=0?'+':'')+pct.toFixed(2)+'%'],['킬',t.kills==null?'—':String(t.kills)],['딜',t.damage==null?'—':fmt(t.damage)],['경기 순위',t.rank==null?'—':t.rank+'위']];
+  tip.innerHTML='<b>'+esc(heading)+'</b>'+rows.map(([k,v],i)=>'<div class="hover-row"><span>'+k+'</span><strong class="'+(i===2?(pct>=0?'up':'down'):'')+'">'+esc(v)+'</strong></div>').join('');
+  tip.classList.add('visible');tip.style.left=Math.max(4,Math.min(rect.width-tip.offsetWidth-4,e.clientX-rect.left+14))+'px';
+  const x=index*290/(raw.length-1),y=155-(price-lo)/range*135;
+  let guide=svg.querySelector('#previewHoverGuide');if(!guide){guide=document.createElementNS('http://www.w3.org/2000/svg','g');guide.id='previewHoverGuide';guide.setAttribute('pointer-events','none');svg.appendChild(guide)}
+  guide.innerHTML='<line x1="'+x+'" x2="'+x+'" y1="0" y2="170" stroke="#8192aa" stroke-dasharray="3 3"/><circle cx="'+x+'" cy="'+y+'" r="4" fill="#fff" stroke="#347fee" stroke-width="2"/>';
+ };
+}
 function sparkline(ticks,playerId){const prices=ticks.filter(t=>t.player===playerId).slice(0,24).reverse().map(t=>Number(t.price));if(prices.length<2)return '<path d="M0 85 L290 85" stroke="#dce3ed" fill="none"/>';const lo=Math.min(...prices),hi=Math.max(...prices),range=hi-lo||1;return '<polyline points="'+prices.map((v,i)=>(i*290/(prices.length-1)).toFixed(1)+','+(155-(v-lo)/range*135).toFixed(1)).join(' ')+'" fill="none" stroke="'+(prices.at(-1)>=prices[0]?'#ed5263':'#3186f5')+'" stroke-width="2.2" stroke-linejoin="round"/>'}
 let priceFlashById=new Map(),previousPriceById=new Map();
 function rankInfo(p){const tier=p.rank_tier?String(p.rank_tier).replace(/_/g,' '):'미배치';const sub=p.rank_subtier?' '+p.rank_subtier:'';return '<span class="rank-tier" title="PUBG 경쟁전 티어">'+esc(tier+sub)+'</span>'+(p.rp_rank?'<span class="rp-placement" title="쪼사증권 등록 선수 RP 순위">#'+p.rp_rank+'</span>':'')}
@@ -478,7 +506,7 @@ function drawMarketPages(){
  $('#homeNews').innerHTML=(marketOverview.news||[]).slice(0,5).map(n=>'<div class="preview-news"><b>'+esc(n.title)+'</b><small>'+esc(n.body)+'</small></div>').join('')||'<p class="sub">아직 반영된 경기 속보가 없습니다.</p>';
  $('#marketNotices').innerHTML=(marketOverview.notices||[]).slice(0,4).map(n=>'<div class="preview-news"><b>'+esc(n.title)+'</b><small>'+esc(n.body)+'</small></div>').join('')||'<p class="sub">등록된 시장 공시가 없습니다.</p>';
  const p=priceOf();$('#previewName').textContent=p?.name||'선수를 선택하세요';$('#previewPlatform').textContent=p?.platform?.toUpperCase()||'PUBG';$('#previewPrice').textContent=p?fmt(p.price)+' P':'—';$('#previewChange').textContent=p?signed(latestChange(p)):'—';$('#previewChange').className='preview-change '+(p?color(latestChange(p)):'');
- $('#previewChart').innerHTML=p?sparkline(market.ticks,p.id):'';const pv=p?volumeOf(p.id):null;$('#previewVolume').textContent=p?fmt(pv.volume)+'주':'—';$('#previewTurnover').textContent=p?fmt(pv.turnover)+' P':'—';$('#previewReason').textContent=p?(market.ticks.find(t=>t.player===p.id)?.reason||'경기 기록 없음'):'—';$('#previewRp').textContent=p?(p.rp??'미확인'):'—';
+ $('#previewChart').innerHTML=p?sparkline(market.ticks,p.id):'';installHomeChartHover();const pv=p?volumeOf(p.id):null;$('#previewVolume').textContent=p?fmt(pv.volume)+'주':'—';$('#previewTurnover').textContent=p?fmt(pv.turnover)+' P':'—';$('#previewReason').textContent=p?(market.ticks.find(t=>t.player===p.id)?.reason||'경기 기록 없음'):'—';$('#previewRp').textContent=p?(p.rp??'미확인'):'—';
  const q=$('#exploreSearch').value.trim().toLowerCase(),order=$('#exploreSort').value;
  const filtered=ps.filter(p=>p.name.toLowerCase().includes(q)).slice().sort((a,b)=>order==='up'?latestChange(b)-latestChange(a):order==='down'?latestChange(a)-latestChange(b):order==='name'?a.name.localeCompare(b.name):b.price-a.price);
  $('#exploreStocks').innerHTML=filtered.map(marketRow).join('')||'<p class="sub">검색 결과가 없습니다.</p>';
@@ -598,7 +626,7 @@ loadSteamLeaderboard();setInterval(loadSteamLeaderboard,14400000);
 function funPlayerAvatar(slot,playerId,name){
  const el=document.getElementById(slot+'Avatar');if(!el)return;
  const photo=playerId&&market?.stock_images?.[playerId];
- if(photo){const img=document.createElement('img');img.alt=name||'선수 프로필';img.src=photo;img.onerror=()=>{el.textContent=(name||'?').slice(0,1).toUpperCase()};el.replaceChildren(img)}
+ if(photo){const existing=el.querySelector('img');if(existing&&existing.getAttribute('src')===photo)return;const img=document.createElement('img');img.alt=name||'선수 프로필';img.decoding='async';img.src=photo;img.onerror=()=>{el.textContent=(name||'?').slice(0,1).toUpperCase()};el.replaceChildren(img)}
  else{el.textContent=(name||'?').slice(0,1).toUpperCase()}
 }
 async function loadFunDashboard(){
