@@ -637,12 +637,12 @@ export default {
    const [p,t,last,error,halt]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first(),env.DB.prepare("SELECT v FROM settings WHERE k='market_halt'").first()]);
    const queue=await env.DB.prepare("SELECT name,q.status,q.last_checked,q.last_error,q.applied FROM sync_queue q JOIN players p ON p.id=q.player ORDER BY p.name").all().catch(()=>({results:[]}));
    const completed=queue.results.filter(x=>x.status==='done').length;
-   const rankRows=await env.DB.prepare("SELECT k,v FROM meta WHERE k LIKE 'rank_detail:%'").all();
-   const rankMap=new Map(rankRows.results.map(x=>[x.k.slice(12),JSON.parse(x.v)]));
+   const rankRows=await env.DB.prepare("SELECT k,v FROM meta WHERE k LIKE 'rank_detail:%'").all().catch(()=>({results:[]}));
+   const rankMap=new Map((rankRows.results||[]).flatMap(x=>{try{return [[x.k.slice(12),JSON.parse(x.v)]]}catch{return []}}));
    const rankedPlayers=p.results.filter(x=>x.rp!=null).slice().sort((a,b)=>Number(b.rp)-Number(a.rp));
    const rankPositions=new Map(rankedPlayers.map((x,i)=>[x.id,i+1]));
    p.results=p.results.map(x=>({...x,rank_tier:rankMap.get(x.id)?.tier||null,rank_subtier:rankMap.get(x.id)?.subTier||null,rank_mode:rankMap.get(x.id)?.rankMode||null,rp_rank:rankPositions.get(x.id)||null}));
-   const stockImages=await stockImageMap(env.DB);
+   const stockImages=await stockImageMap(env.DB).catch(()=>({}));
    return J({players:p.results,stock_images:stockImages,ticks:t.results,market_halted:halt?.v==='1',connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed,queue:queue.results}});
   }
   if(path==='/api/player/history'&&request.method==='GET'){
