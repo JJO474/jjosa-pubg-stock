@@ -21,6 +21,23 @@ async function pubg(env,platform,path){
   }
   return res.json();
 }
+async function steamTop100(env){
+ const db=env.DB,key='steam_top100_as_fpp',cached=await db.prepare('SELECT v FROM meta WHERE k=?').bind(key).first();
+ let prior=null;try{prior=cached?JSON.parse(cached.v):null}catch(_){}
+ if(prior&&Date.now()-Date.parse(prior.updated)<14400000)return prior;
+ try{
+  const seasons=await pubg(env,'steam','seasons');
+  const season=seasons.data?.find(x=>x.attributes?.isCurrentSeason)?.id;
+  if(!season)throw Error('현재 시즌을 확인할 수 없습니다');
+  const data=await pubg(env,'pc-as','leaderboards/'+encodeURIComponent(season)+'/squad-fpp');
+  const included=(data.included||[]).filter(x=>x.type==='player');
+  const entries=included.map((x,i)=>{const a=x.attributes||{},v=a.stats||{};return {id:x.id,name:a.name||'',rank:Number(a.rank)||i+1,rp:Number(v.rankPoints)||0,kda:v.kda==null?null:Number(v.kda),tier:v.tier||null,subTier:v.subTier||null}}).sort((a,b)=>a.rank-b.rank).slice(0,100);
+  if(!entries.length)throw Error('PUBG 리더보드 결과가 비어 있습니다');
+  const result={region:'pc-as',mode:'squad-fpp',season,updated:stamp(),entries};
+  await db.prepare("INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(key,JSON.stringify(result)).run();
+  return result;
+ }catch(e){if(prior)return {...prior,stale:true,error:String(e.message||e)};throw e}
+}
 async function ranked(env,p){
  const seasons=await pubg(env,p.platform,'seasons');const season=seasons.data?.find(s=>s.attributes?.isCurrentSeason)?.id;
  if(!season)return {season:null,rp:null};
@@ -577,6 +594,9 @@ export default {
    await marketSchema(env.DB);
    const [t,n]=await Promise.all([env.DB.prepare('SELECT t.*,p.name FROM ticks t JOIN players p ON p.id=t.player ORDER BY t.id DESC LIMIT 80').all(),env.DB.prepare('SELECT id,created,title,body,category FROM market_notices ORDER BY id DESC LIMIT 30').all()]);
    return J({news:[...t.results.map(x=>({...tickNews(x,{name:x.name}),player_id:x.player})),...n.results.map(x=>({...x,player_id:null}))].sort((a,b)=>String(b.created).localeCompare(String(a.created))).slice(0,80)});
+  }
+  if(path==='/api/leaderboard/steam'&&request.method==='GET'){
+   try{return J(await steamTop100(env))}catch(e){return J({entries:[],error:String(e.message||e),region:'pc-as',mode:'squad-fpp'},503)}
   }
   if(path==='/api/state'&&request.method==='GET'){
    const [p,t,last,error,halt]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first(),env.DB.prepare("SELECT v FROM settings WHERE k='market_halt'").first()]);
