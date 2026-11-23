@@ -231,6 +231,18 @@ body{background:#f3f6fa;color:#1d2939}
 .account-holdings-table .account-stock-name{font-weight:800;color:#f4f6fc}.account-holdings-table td.up{color:#f66b7c!important}.account-holdings-table td.down{color:#66a2ff!important}.account-holdings-table .account-empty{text-align:center!important;color:#8f9eb2;padding:24px}
 .account-lower{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:22px;padding:10px 20px 22px}.account-lower .section-title{color:#c8d3e3}.account-lower #assetHistoryChart{width:100%;background:#1d2430;border-radius:9px}
 @media(max-width:900px){.account-lower{grid-template-columns:1fr}.account-summary-meta{gap:7px 12px}}
+</style><style>
+/* Full-width portfolio view: remove legacy 850px cap and right sidebar */
+body.view-account .app-layout{display:block!important;width:100%!important;max-width:none!important;min-width:0!important}
+body.view-account .app-main{width:100%!important;max-width:none!important;min-width:0!important;margin:0!important;border:0!important;overflow:visible!important}
+body.view-account .market-sidebar{display:none!important}
+body.view-account #tradeView{width:100%!important;max-width:none!important;min-width:0!important}
+body.view-account #market.terminal{display:block!important;width:100%!important;max-width:none!important;min-width:0!important;padding:12px 16px 26px!important;background:#fff!important}
+body.view-account #assets.account-col{display:block!important;width:100%!important;max-width:none!important;min-width:0!important;margin:0!important;border:1px solid #303642!important}
+body.view-account #accountPanel{width:100%!important;max-width:none!important;min-width:0!important}
+body.view-account .account-table-scroll{width:100%;max-width:100%;overflow-x:auto}
+body.view-account .account-holdings-table{width:100%;min-width:900px}
+@media(max-width:960px){body.view-account #market.terminal{padding:8px!important}}
 </style></head><body><div class="shell">
 <header class="top"><div class="logo"><i></i><b>쪼사</b>증권</div><nav id="mainNav"><a href="#home" data-view="home" class="active">홈</a><a href="#home" id="feedNav">피드</a><a href="#explore" data-view="explore">주식 골라보기</a><a href="#trade" data-view="trade">종목 거래</a><a href="#account" data-view="account">내 계좌</a><a href="/admin">관리자</a></nav><input class="search" id="globalSearch" placeholder="⌕ 선수 종목 검색" aria-label="선수 종목 검색"><button id="login" class="auth" type="button">관리자 인증</button></header>
 <div class="notice-strip">📢　쪼사증권은 PUBG 경기 결과를 기반으로 주가가 움직이는 가상 증권시장입니다.　 <a href="/admin">운영 안내 ›</a></div>
