@@ -453,7 +453,16 @@ body.view-feed .forum-shell{max-width:1550px;margin:0 auto;display:grid;grid-tem
 .forum-poll small,.forum-disclosure{font-size:10px;color:#8491a7;line-height:1.6}
 @media(max-width:1150px){body.view-feed .forum-shell{grid-template-columns:165px minmax(0,1fr)}.forum-right{display:none}}
 @media(max-width:680px){body.view-feed .forum-shell{display:block;padding:10px}.forum-left{position:static;margin-bottom:10px}.forum-left-nav{display:flex;overflow-x:auto}.forum-left-nav button{white-space:nowrap}.forum-left h3,.forum-tags{display:none}.forum-new{width:auto;padding:9px 14px}.forum-controls{flex-wrap:wrap}.forum-post-tags{justify-content:flex-start}}
-</style><style>.forum-news-visual{border-radius:11px;min-height:110px;margin:12px 0 4px;padding:18px 22px;display:flex;flex-direction:column;justify-content:center;gap:7px;color:white;background:linear-gradient(115deg,#152945,#315a91);position:relative;overflow:hidden}.forum-news-visual:after{content:'↗';position:absolute;right:16px;bottom:-34px;font-size:135px;opacity:.1;font-weight:900}.forum-news-visual span{font-size:10px;font-weight:800;letter-spacing:1px;opacity:.85}.forum-news-visual strong{font-size:17px;line-height:1.35;max-width:85%;z-index:1}.forum-news-visual small{font-size:11px;opacity:.8;z-index:1}.forum-news-market{background:linear-gradient(115deg,#271d36,#853c5e)}.forum-news-rank{background:linear-gradient(115deg,#123d43,#267e74)}.forum-center .community-post:has(.forum-news-visual){border-left:3px solid #377fe6!important}</style></head><body><div class="shell">
+</style><style>.forum-news-visual{border-radius:11px;min-height:110px;margin:12px 0 4px;padding:18px 22px;display:flex;flex-direction:column;justify-content:center;gap:7px;color:white;background:linear-gradient(115deg,#152945,#315a91);position:relative;overflow:hidden}.forum-news-visual:after{content:'↗';position:absolute;right:16px;bottom:-34px;font-size:135px;opacity:.1;font-weight:900}.forum-news-visual span{font-size:10px;font-weight:800;letter-spacing:1px;opacity:.85}.forum-news-visual strong{font-size:17px;line-height:1.35;max-width:85%;z-index:1}.forum-news-visual small{font-size:11px;opacity:.8;z-index:1}.forum-news-market{background:linear-gradient(115deg,#271d36,#853c5e)}.forum-news-rank{background:linear-gradient(115deg,#123d43,#267e74)}.forum-center .community-post:has(.forum-news-visual){border-left:3px solid #377fe6!important}</style><style>
+/* Single unsegmented mixed news and community timeline */
+body.view-feed .forum-shell{grid-template-columns:minmax(0,1fr) 290px;max-width:1170px;gap:18px}
+.forum-unified-heading{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.forum-unified-heading strong{font-size:16px;color:#1e2e49}
+.forum-unified-heading small{font-size:11px;color:#8391a5}
+.forum-center .forum-controls{padding:6px 2px 9px;border-bottom:1px solid #e7ebf3}
+@media(max-width:1150px){body.view-feed .forum-shell{grid-template-columns:minmax(0,1fr) 260px}}
+@media(max-width:850px){body.view-feed .forum-shell{display:block}.forum-right{display:none}}
+</style></head><body><div class="shell">
 <header class="top"><div class="logo"><i></i><b>쪼사</b>증권</div><nav id="mainNav"><a href="#home" data-view="home" class="active">홈</a><a href="#feed" data-view="feed" id="feedNav">피드</a><a href="#explore" data-view="explore">주식 골라보기</a><a href="#trade" data-view="trade">종목 거래</a><a href="#account" data-view="account">내 계좌</a><a href="/admin">관리자</a></nav><input class="search" id="globalSearch" placeholder="⌕ 선수 종목 검색" aria-label="선수 종목 검색"><button id="login" class="auth" type="button">관리자 인증</button></header>
 
 <div class="app-layout"><div class="app-main"><section id="homeView" class="page-view">
@@ -470,8 +479,7 @@ body.view-feed .forum-shell{max-width:1550px;margin:0 auto;display:grid;grid-tem
 <div id="legacyMarketRenderTargets" hidden aria-hidden="true"><div id="premiumHeatmap"></div><input id="premiumSearch" value=""><select id="premiumSort"><option value="change">상승률</option><option value="volatility">변동성</option><option value="kills">킬</option><option value="damage">딜</option><option value="volume">거래량</option><option value="price">주가</option></select><select id="premiumDirection"><option value="all">전체</option><option value="up">상승</option><option value="down">하락</option></select><table><tbody id="premiumScreener"></tbody></table><div id="topGainers"></div><div id="topLosers"></div></div>
 </section>
 <section id="feedView" class="page-view" hidden><div class="forum-shell">
-<aside class="forum-left"><button class="forum-new" id="forumNewPost">✎ 글 작성하기</button><nav class="forum-left-nav"><button class="active" data-forum-category="all">⌂ 전체 글</button><button data-forum-category="popular">🔥 인기 글</button><button data-forum-category="news">📰 공식 뉴스</button><button data-forum-category="free">💬 자유게시판</button><button data-forum-category="question">❔ 질문/도움</button><button data-forum-category="meme">▧ 밈/짤</button><button data-forum-category="market">🔥 시장 이슈</button><button data-forum-category="predict">📈 분석/전망</button><button data-forum-category="info">▤ 정보 공유</button></nav><h3>관심 태그</h3><div id="forumTags" class="forum-tags"></div></aside>
-<main class="forum-center"><div class="forum-controls"><div class="forum-sort"><button class="active" data-forum-sort="new">최신순</button><button data-forum-sort="popular">🔥 인기순</button><button data-forum-sort="comments">💬 댓글많은순</button></div><input id="feedSearch" type="search" placeholder="⌕ 글 검색 (선수, 키워드)" aria-label="커뮤니티 글 검색"></div>
+<main class="forum-center"><div class="forum-controls"><div class="forum-unified-heading"><strong>전체 피드</strong><small>경기 뉴스 · 시장 속보 · 자유글 · 루머가 함께 올라옵니다</small></div><input id="feedSearch" type="search" placeholder="⌕ 글 검색 (선수, 키워드)" aria-label="커뮤니티 글 검색"></div>
 <div class="feed-compose" id="forumComposer"><div class="feed-compose-top"><span class="feed-compose-avatar">쪼</span><textarea id="feedPostText" rows="1" maxlength="1000" placeholder="오늘 시장 어땠음? 자유롭게 써봐요..."></textarea></div><div class="feed-compose-bottom"><span>내 글과 댓글은 이 브라우저에만 저장됩니다.</span><button id="feedPostSubmit" type="button">글 작성</button></div></div>
 <div id="feedList" class="feed-list"><div class="feed-empty">커뮤니티 글을 불러오는 중입니다.</div></div><div class="feed-footer"><button id="feedMore" type="button" hidden>더 보기</button><span id="feedUpdated"></span></div></main>
 <aside class="forum-right"><div class="forum-banner"><strong>쪼사증권<br>PUBG 시장 리포트</strong><small>오늘의 경기와 주가, 자유롭게 떠들어봐요</small></div><section class="forum-side-card"><h3>🔥 지금 가장 뜨거운 글</h3><div id="feedTrending"></div></section><section class="forum-side-card"><h3>💬 실시간 한줄글</h3><div id="forumOneLiners"></div></section><section class="forum-side-card forum-poll"><h3>👑 이번 주 토론 주제</h3><b>지금 가장 기대되는 선수는?</b><div id="forumPoll"></div><small>투표는 내 브라우저에만 저장됩니다.</small></section><p class="forum-disclosure">가상 작성자·가상 루머는 창작 콘텐츠입니다. 실제 선수 발언이나 확인된 소식이 아닙니다.</p></aside>
@@ -908,16 +916,21 @@ function renderFeed(){
  const query=(document.getElementById('feedSearch')?.value||'').trim().toLowerCase();
  const personal=feedMemos().map(x=>({...x,type:'memo',category:'free'}));
  const factual=feedItems.filter(x=>!x.fiction).slice(0,32).map((x,i)=>({...x,seed:'factual-'+communityKey(x),tags:[x.type==='game'?'경기뉴스':x.type==='rank'?'TOP500':x.type==='market'?'주가속보':'정보'],category:x.type==='market'?'predict':'info'}));
- const source=[...personal,...forumGenerated(),...factual];
+ const casual=forumGenerated();
+ const mixed=[];let fi=0,ci=0;
+ while(fi<factual.length||ci<casual.length){
+  if(fi<factual.length)mixed.push(factual[fi++]);
+  if(ci<casual.length)mixed.push(casual[ci++]);
+  if(ci<casual.length)mixed.push(casual[ci++]);
+ }
+ const source=[...personal,...mixed];
  let filtered=source.filter(x=>{
   const cat=forumCategoryOf(x),txt=(x.title+' '+(x.detail||'')+' '+(x.tags||[]).join(' ')).toLowerCase();
-  return (forumCategory==='all'||forumCategory==='popular'||forumCategory===cat)&&(!query||txt.includes(query))&&(!forumTag||txt.toLowerCase().includes(forumTag.toLowerCase()));
+  return !query||txt.includes(query);
  });
  const score=x=>communityHash(x.seed||communityKey(x))%160+20;
  const commentScore=x=>communityHash('comments-'+(x.seed||communityKey(x)))%90+5;
- if(forumCategory==='popular'||forumSort==='popular')filtered.sort((a,b)=>score(b)-score(a));
- else if(forumSort==='comments')filtered.sort((a,b)=>commentScore(b)-commentScore(a));
- else filtered.sort((a,b)=>new Date(b.created||0)-new Date(a.created||0));
+
  root.innerHTML=filtered.slice(0,feedLimit).map(x=>{
   const memo=x.type==='memo',synthetic=!memo,key=communityKey(x),h=communityHash(x.seed||key),author=memo?'나':x.type==='community'?communityNames[h%communityNames.length]:'쪼사증권 뉴스룸';
   const d=new Date(x.created),time=Number.isNaN(d.getTime())?'':d.toLocaleString('ko-KR');
@@ -934,10 +947,10 @@ function renderFeed(){
  root.querySelectorAll('[data-feed-delete]').forEach(b=>b.onclick=()=>{if(!confirm('내 글을 삭제할까요?'))return;localStorage.setItem(feedMemoKey,JSON.stringify(feedMemos().filter(x=>x.id!==b.dataset.feedDelete)));renderFeed()});
  root.querySelectorAll('[data-reply-send]').forEach(b=>b.onclick=()=>{const k=b.dataset.replySend,input=[...root.querySelectorAll('[data-reply-input]')].find(el=>el.dataset.replyInput===k),t=input?.value.trim();if(!t)return;const replies=communityReplies(k);replies.push(t);localStorage.setItem('jjosa_replies_'+k,JSON.stringify(replies.slice(-100)));renderFeed()});
  root.querySelectorAll('[data-feed-toggle]').forEach(b=>b.onclick=()=>{const el=[...root.querySelectorAll('[data-comments]')].find(e=>e.dataset.comments===b.dataset.feedToggle);if(el)el.classList.toggle('collapsed')});
- root.querySelectorAll('[data-forum-tag]').forEach(b=>b.onclick=()=>{forumTag=b.dataset.forumTag;renderFeed()});
+ root.querySelectorAll('[data-forum-tag]').forEach(b=>b.onclick=()=>{const search=document.getElementById('feedSearch');search.value=b.dataset.forumTag;renderFeed()});
  document.getElementById('feedMore').hidden=filtered.length<=feedLimit;
- document.querySelectorAll('[data-forum-category]').forEach(b=>b.classList.toggle('active',b.dataset.forumCategory===forumCategory));
- document.querySelectorAll('[data-forum-sort]').forEach(b=>b.classList.toggle('active',b.dataset.forumSort===forumSort));
+ 
+ 
  const trending=document.getElementById('feedTrending');if(trending)trending.innerHTML=source.filter(x=>x.type==='community').slice(0,5).map((x,i)=>'<div class="feed-trend"><b>'+String(i+1)+'</b><span>'+esc(x.title)+'</span></div>').join('');
  const one=document.getElementById('forumOneLiners');if(one)one.innerHTML=['오늘도 일단 존버 간다 ㅋㅋ','다음 판 치킨 누구냐','주가 왜 또 흔들림 ㅠ','RP 순위표 보러 간다','내 포인트 어디 갔냐'].map(t=>'<p>🟢 '+esc(t)+'</p>').join('');
  const tags=document.getElementById('forumTags');if(tags)tags.innerHTML=['치킨','RP','TOP500','주식예측','잡담','멘탈관리','밈'].map(t=>'<button class="forum-tag" data-forum-interest="'+t+'">#'+t+'</button>').join('');
@@ -1014,8 +1027,8 @@ async function loadFeed(){
 document.getElementById('feedMore').onclick=()=>{feedLimit+=20;renderFeed()};
 document.getElementById('feedSearch').addEventListener('input',()=>{feedLimit=20;renderFeed()});
 document.getElementById('forumNewPost').onclick=()=>{document.getElementById('feedPostText').focus();document.getElementById('forumComposer').scrollIntoView({behavior:'smooth',block:'center'})};
-document.querySelectorAll('[data-forum-category]').forEach(b=>b.onclick=()=>{forumCategory=b.dataset.forumCategory;forumTag='';feedLimit=20;renderFeed()});
-document.querySelectorAll('[data-forum-sort]').forEach(b=>b.onclick=()=>{forumSort=b.dataset.forumSort;renderFeed()});
+
+
 
 document.getElementById('feedPostSubmit').onclick=()=>{
  const input=document.getElementById('feedPostText'),body=input.value.trim();
