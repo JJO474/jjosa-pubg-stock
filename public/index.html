@@ -197,6 +197,18 @@ body{background:#f3f6fa;color:#1d2939}
 .fun-dashboard .fun-king{background:linear-gradient(125deg,#fff7e7 0%,#fffdf7 100%);border-color:#f2e3bd}
 .fun-dashboard .fun-badge{background:linear-gradient(125deg,#f5efff 0%,#fcfaff 100%);border-color:#e7dbfa}
 @media(max-width:850px){.fun-dashboard .fun-card{min-height:125px}.fun-dashboard .fun-avatar{width:38px;height:38px;flex-basis:38px}}
+</style><style>
+/* OHLC hover panel, positioned within chart container */
+#chart,#jjsCandleChart{cursor:crosshair}
+.chart-hover-wrap{position:relative;min-width:0}
+.chart-hover-tip{position:absolute;z-index:25;top:12px;left:12px;pointer-events:none;min-width:154px;max-width:210px;padding:11px 13px;background:rgba(250,252,255,.98);color:#26364d;border:1px solid #ccd6e5;border-radius:13px;box-shadow:0 8px 26px rgba(18,40,75,.17);font-size:11px;line-height:1.65;display:none}
+.chart-hover-tip.visible{display:block}
+.chart-hover-tip b{display:block;margin-bottom:5px;font-size:12px;color:#1c2b42}
+.chart-hover-tip .hover-row{display:flex;justify-content:space-between;gap:18px}
+.chart-hover-tip .hover-row span{color:#8290a4}
+.chart-hover-tip .hover-row strong{color:#35465f;font-weight:750}
+.chart-hover-tip .hover-row strong.up{color:#e94d60}.chart-hover-tip .hover-row strong.down{color:#3186ed}
+.chart-hover-line{stroke:#899bb5;stroke-width:1;stroke-dasharray:4 4;pointer-events:none}
 </style></head><body><div class="shell">
 <header class="top"><div class="logo"><i></i><b>쪼사</b>증권</div><nav id="mainNav"><a href="#home" data-view="home" class="active">홈</a><a href="#home" id="feedNav">피드</a><a href="#explore" data-view="explore">주식 골라보기</a><a href="#trade" data-view="trade">종목 거래</a><a href="#account" data-view="account">내 계좌</a><a href="/admin">관리자</a></nav><input class="search" id="globalSearch" placeholder="⌕ 선수 종목 검색" aria-label="선수 종목 검색"><button id="login" class="auth" type="button">관리자 인증</button></header>
 <div class="notice-strip">📢　쪼사증권은 PUBG 경기 결과를 기반으로 주가가 움직이는 가상 증권시장입니다.　 <a href="/admin">운영 안내 ›</a></div>
@@ -250,6 +262,36 @@ function render(){
  drawChart();drawBook();drawAccount();drawOrder();drawMarketPages();drawPerformance();
 }
 function drawBook(){const p=priceOf(),el=$('#orderbook');if(!p){el.innerHTML='<div class="panel-body sub">선수를 선택하세요.</div>';return}const step=Math.max(1,Math.round(p.price/100));let rows='';for(let i=5;i>=-5;i--){const v=Math.max(1,p.price+step*i),kind=i>0?'ask':i<0?'bid':'mid';rows+='<div class="book-row '+kind+'"><span>'+(i>0?'매도 참고':i<0?'매수 참고':'현재가')+'</span><span class="book-price">'+fmt(v)+'</span><span>'+(i===0?'●':'—')+'</span><div class="bar" style="width:'+(i===0?100:Math.max(12,100-Math.abs(i)*16))+'%"></div></div>'}el.innerHTML=rows}
+function installCandleHover(svg,items,opts={}){
+ if(!svg)return;
+ let wrap=svg.parentElement;
+ if(!wrap.classList.contains('chart-hover-wrap')){const w=document.createElement('div');w.className='chart-hover-wrap';svg.parentNode.insertBefore(w,svg);w.appendChild(svg);wrap=w}
+ let tip=wrap.querySelector('.chart-hover-tip');if(!tip){tip=document.createElement('div');tip.className='chart-hover-tip';wrap.appendChild(tip)}
+ const fmtVal=v=>Number(v||0).toLocaleString('ko-KR')+' P';
+ const total=items.length;
+ const start=opts.start??20,span=opts.span??630;
+ const overlayId='hover-guide-'+svg.id;
+ function hide(){tip.classList.remove('visible');svg.querySelector('#'+overlayId)?.remove()}
+ svg.onpointerleave=hide;
+ svg.onpointermove=e=>{
+  if(!total)return;
+  const rect=svg.getBoundingClientRect();if(!rect.width)return;
+  const x=(e.clientX-rect.left)/rect.width*(opts.viewWidth||720);
+  const index=Math.max(0,Math.min(total-1,Math.floor((x-start)/span*total)));
+  const c=items[index];if(!c)return;
+  const open=Number(c.o??c.open),close=Number(c.c??c.close),high=Number(c.h??c.high),low=Number(c.l??c.low);
+  const change=open?(close/open-1)*100:0,cls=change>=0?'up':'down';
+  const date=String(c.date??c.time??'');const dt=new Date(date);
+  const title=Number.isNaN(dt.getTime())?date:dt.toLocaleDateString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit',weekday:'short'});
+  tip.innerHTML='<b>'+esc(title)+'</b>'+[['시작',fmtVal(open)],['마지막',fmtVal(close)],['최고',fmtVal(high)],['최저',fmtVal(low)],['거래량',c.volume==null?'기록 없음':Number(c.volume).toLocaleString('ko-KR')+'주'],['등락률',(change>=0?'+':'')+change.toFixed(2)+'%']].map(([k,v],i)=>'<div class="hover-row"><span>'+k+'</span><strong class="'+(i===5?cls:'')+'">'+esc(v)+'</strong></div>').join('');
+  tip.classList.add('visible');
+  const left=Math.max(8,Math.min(rect.width-tip.offsetWidth-8,e.clientX-rect.left+16));
+  tip.style.left=left+'px';tip.style.top='8px';
+  const xx=start+(index+.5)*span/total;
+  let line=svg.querySelector('#'+overlayId);if(!line){line=document.createElementNS('http://www.w3.org/2000/svg','line');line.id=overlayId;line.setAttribute('class','chart-hover-line');svg.appendChild(line)}
+  line.setAttribute('x1',xx);line.setAttribute('x2',xx);line.setAttribute('y1',opts.y1??10);line.setAttribute('y2',opts.y2??325);
+ };
+}
 function drawChart(){
  const svg=$('#chart'),p=priceOf();if(!p){svg.innerHTML='<text x="60" y="200" fill="#8d98aa">선수를 선택하세요</text>';return}
  const raw=market.ticks.filter(t=>t.player===selected).slice().reverse();
@@ -276,6 +318,7 @@ function drawChart(){
  html+='<line x1="15" x2="655" y1="'+y(candles.at(-1).c)+'" y2="'+y(candles.at(-1).c)+'" stroke="#647c9e" stroke-dasharray="3 4"/>';
  html+='<text x="20" y="388" fill="#858c98" font-size="11">'+esc(new Date(candles[0].date).toLocaleDateString('ko-KR'))+'</text><text x="535" y="388" fill="#858c98" font-size="11">'+esc(new Date(candles.at(-1).date).toLocaleDateString('ko-KR'))+'</text>';
  svg.innerHTML=html;
+ installCandleHover(svg,candles,{start:20,span:630,viewWidth:720,y1:18,y2:326});
 }
 function drawAccount(){
  if(!owner){$('#accountAnalytics').textContent='관리자 인증 후 표시됩니다.';$('#accountLedger').textContent='관리자 인증 후 표시됩니다.';$('#totalAsset').textContent='—';$('#cash').textContent='—';$('#stockValue').textContent='—';$('#pnl').textContent='—';$('#pnlPct').textContent='—';$('#holdings').textContent='관리자 인증 후 표시됩니다.';$('#trades').textContent='관리자 인증 후 표시됩니다.';return}
@@ -528,6 +571,7 @@ function drawJjsCandles(){
  const lo=Math.min(...arr.map(c=>c.low)),hi=Math.max(...arr.map(c=>c.high)),range=hi-lo||1,maxVol=Math.max(1,...arr.map(c=>c.volume));
  const x=i=>25+(i+.5)*670/arr.length,y=v=>12+(hi-v)/range*165,w=Math.max(3,Math.min(15,670/arr.length*.58));
  svg.innerHTML='<line x1="20" x2="700" y1="185" y2="185" stroke="#3c4656"/>'+arr.map((c,i)=>{const xx=x(i),up=c.close>=c.open,col=up?'#ef5261':'#478df5';return '<line x1="'+xx+'" x2="'+xx+'" y1="'+y(c.high)+'" y2="'+y(c.low)+'" stroke="'+col+'" stroke-width="2"/><rect x="'+(xx-w/2)+'" y="'+Math.min(y(c.open),y(c.close))+'" width="'+w+'" height="'+Math.max(2,Math.abs(y(c.open)-y(c.close)))+'" fill="'+col+'"/><rect x="'+(xx-w/2)+'" y="'+(248-c.volume/maxVol*54)+'" width="'+w+'" height="'+(c.volume/maxVol*54)+'" fill="#657f9d" opacity=".8"><title>'+esc(c.time)+' · 거래량 '+c.volume+'주</title></rect>'}).join('');
+ installCandleHover(svg,arr,{start:25,span:670,viewWidth:720,y1:10,y2:248});
 }
 document.querySelectorAll('[data-jjs-rank]').forEach(b=>b.onclick=()=>{jjsRank=b.dataset.jjsRank;document.querySelectorAll('[data-jjs-rank]').forEach(x=>x.classList.toggle('selected',x===b));renderJjsAnalytics()});
 $('#jjsPeriod').onchange=()=>{if(selected)loadJjsCandles(selected)};
