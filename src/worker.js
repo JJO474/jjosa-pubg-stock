@@ -641,7 +641,8 @@ export default {
    }catch(e){return J({error:'선수 목록 조회 실패',detail:String(e.message||e)},503)}
   }
   if(path==='/api/state'&&request.method==='GET'){
-   const [p,t,last,error,halt]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first(),env.DB.prepare("SELECT v FROM settings WHERE k='market_halt'").first()]);
+   const p=await env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all();
+    const [t,last,error,halt]=await Promise.all([env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all().catch(()=>({results:[]})),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first().catch(()=>null),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first().catch(()=>null),env.DB.prepare("SELECT v FROM settings WHERE k='market_halt'").first().catch(()=>null)]);
    const queue=await env.DB.prepare("SELECT name,q.status,q.last_checked,q.last_error,q.applied FROM sync_queue q JOIN players p ON p.id=q.player ORDER BY p.name").all().catch(()=>({results:[]}));
    const completed=queue.results.filter(x=>x.status==='done').length;
    const rankRows=await env.DB.prepare("SELECT k,v FROM meta WHERE k LIKE 'rank_detail:%'").all().catch(()=>({results:[]}));
