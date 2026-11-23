@@ -1037,7 +1037,7 @@ async function loadFeed(){
   feedLastLoaded=Date.now();
   document.getElementById('feedUpdated').textContent='최근 갱신 '+new Date().toLocaleTimeString('ko-KR')+' · 데이터 기반 소식';
   renderFeed();
- }catch(e){document.getElementById('feedList').innerHTML='<div class="feed-empty">피드를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div>'}
+ }catch(e){console.warn('Feed API failed; showing local market discussions:',e);feedLastLoaded=Date.now();try{renderFeed()}catch(renderError){console.error('Feed rendering:',renderError);document.getElementById('feedList').innerHTML='<div class="feed-empty">피드 표시 오류: '+esc(renderError.message)+'</div>'}}
  finally{feedLoading=false}
 }
 
