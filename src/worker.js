@@ -3,12 +3,14 @@ const stamp=()=>new Date().toISOString();
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 async function pubg(env,platform,path){
   if(!env.PUBG_API_KEY)throw Error('PUBG_API_KEY 비밀키가 설정되지 않았습니다');
+  // Matches are not rate-limited by PUBG; only meter player/season requests.
+  const exempt=path.startsWith('matches/');
   // Shared D1 gate, deliberately conservative: max 8 requests per rolling minute.
   const gate=await env.DB.prepare("SELECT v FROM meta WHERE k='api_gate'").first();
   const now=Date.now();const arr=gate?JSON.parse(gate.v).filter(t=>now-t<60000):[];
-  if(arr.length>=8)throw Error('API_RATE_LIMIT: 잠시 후 다시 갱신해 주세요');
+  if(!exempt){if(arr.length>=8)throw Error('API_RATE_LIMIT: 잠시 후 다시 갱신해 주세요');
   arr.push(now);
-  await env.DB.prepare("INSERT INTO meta(k,v) VALUES('api_gate',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(arr)).run();
+  await env.DB.prepare("INSERT INTO meta(k,v) VALUES('api_gate',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(arr)).run();}
   const res=await fetch(`https://api.pubg.com/shards/${platform}/${path}`,{headers:{Authorization:`Bearer ${env.PUBG_API_KEY}`,Accept:'application/vnd.api+json','User-Agent':'JJOSAStock/3.0'}});
   if(!res.ok){
     let apiError='';
@@ -122,8 +124,8 @@ async function calculateMatchEffects(db,p,input,config){
  return effectCalculation({...input,history:history.results,marketScore:null,rivalScore,dormantDays,eventPct},config);
 }
 
-async function pollPlayer(env,p){
- const d=await pubg(env,p.platform,`players/${encodeURIComponent(p.id)}`);
+async function pollPlayer(env,p,prefetched=null){
+ const d=prefetched||await pubg(env,p.platform,`players/${encodeURIComponent(p.id)}`);
  const ids=(d.data?.relationships?.matches?.data||[]).map(x=>x.id).reverse();
  const unseen=[];
  for(const id of ids){if(!(await env.DB.prepare('SELECT 1 FROM processed WHERE player=? AND match_id=?').bind(p.id,id).first()))unseen.push(id);}
@@ -156,6 +158,9 @@ async function pollPlayer(env,p){
  }
  // Only compare RP when all currently discoverable matches have been processed.
  if(unseen.length<=batch.length){
+  const rpMetaKey='rp_checked:'+p.id;
+  const rpMeta=await env.DB.prepare('SELECT v FROM meta WHERE k=?').bind(rpMetaKey).first();
+  if(!rpMeta||Date.now()-Date.parse(rpMeta.v)>1800000){
   const r=await ranked(env,p);
   const delta=r.season===p.season&&r.rp!=null&&p.rp!=null?r.rp-p.rp:null;
   if(delta){
@@ -168,6 +173,8 @@ async function pollPlayer(env,p){
   }
   await env.DB.prepare('UPDATE players SET rp=?,season=?,updated=? WHERE id=?').bind(r.rp,r.season,stamp(),p.id).run();
   if(r.rp!=null)await env.DB.prepare('INSERT INTO snapshots(player,created,season,rp) VALUES(?,?,?,?)').bind(p.id,stamp(),r.season,r.rp).run();
+  await env.DB.prepare("INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(rpMetaKey,stamp()).run();
+  }
  }
  return {applied,remaining:Math.max(0,unseen.length-batch.length)};
 }
@@ -184,11 +191,20 @@ async function sync(env){
   }
   await db.prepare("INSERT INTO meta(k,v) VALUES('sync_cycle',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(cycle)).run();
  }
- const pending=await db.prepare("SELECT q.player,p.* FROM sync_queue q JOIN players p ON p.id=q.player WHERE q.status='pending' ORDER BY q.last_checked IS NOT NULL,q.last_checked ASC,q.player LIMIT 2").all();
+ const pending=await db.prepare("SELECT q.player,p.* FROM sync_queue q JOIN players p ON p.id=q.player WHERE q.status='pending' ORDER BY q.last_checked IS NOT NULL,q.last_checked ASC,q.player LIMIT 10").all();
  let checked=0,applied=0,failures=0;
- for(const p of pending.results){
+ const groups=new Map();
+ for(const p of pending.results){const shard=String(p.platform||'steam');if(!groups.has(shard))groups.set(shard,[]);groups.get(shard).push(p)}
+ for(const [shard,players] of groups){
+  let data;
+  try{data=await pubg(env,shard,'players?filter[playerIds]='+encodeURIComponent(players.map(p=>p.id).join(',')))}
+  catch(e){if(String(e.message||e).includes('429')||String(e.message||e).startsWith('API_RATE_LIMIT'))break;failures++;continue}
+  const byId=new Map((data.data||[]).map(x=>[x.id,x]));
+  for(const p of players){
   try{
-   const r=await pollPlayer(env,p);
+   const playerData=byId.get(p.id);
+   if(!playerData)throw Error('PUBG 선수 조회 결과에 계정 없음');
+   const r=await pollPlayer(env,p,{data:playerData});
    checked++;applied+=r.applied;
    await db.prepare("UPDATE sync_queue SET status='done',attempts=attempts+1,last_checked=?,last_error=NULL,applied=? WHERE player=?").bind(stamp(),r.applied,p.id).run();
   }catch(e){
@@ -197,6 +213,7 @@ async function sync(env){
    failures++;
    await db.prepare("UPDATE sync_queue SET status='error',attempts=attempts+1,last_checked=?,last_error=? WHERE player=?").bind(stamp(),msg.slice(0,300),p.id).run();
   }
+ }
  }
  const counts=await db.prepare("SELECT status,COUNT(*) AS n FROM sync_queue GROUP BY status").all();
  const stats=Object.fromEntries(counts.results.map(x=>[x.status,x.n]));
