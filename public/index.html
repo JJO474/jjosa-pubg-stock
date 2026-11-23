@@ -296,6 +296,12 @@ body.view-account #assets .account-summary-broker{padding:20px 24px 19px!importa
 #homeView .indices>.steam-leaderboard .steam-board-row{height:18px!important;min-height:18px!important;padding:1px 7px!important;line-height:16px!important}
 #homeView .indices>.steam-leaderboard .steam-board-foot{flex:1 0 28px!important;min-height:28px!important;padding:2px 6px!important;display:flex!important;align-items:center!important}
 #homeView .indices>.steam-leaderboard .steam-rank-pagination button{height:19px!important;min-width:22px!important}
+</style><style>
+/* Registered player portraits in account holdings */
+.account-holdings-table .account-stock-identity{display:inline-flex;align-items:center;gap:9px;min-width:0;max-width:100%}
+.account-holdings-table .account-stock-avatar{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;min-width:30px;border-radius:50%;background:#35435b;color:#eaf0fc;font-size:12px;font-weight:800;border:1px solid #53637b;overflow:hidden}
+.account-holdings-table .account-stock-identity>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.account-holdings-table .account-stock-name{min-width:160px}
 </style></head><body><div class="shell">
 <header class="top"><div class="logo"><i></i><b>쪼사</b>증권</div><nav id="mainNav"><a href="#home" data-view="home" class="active">홈</a><a href="#home" id="feedNav">피드</a><a href="#explore" data-view="explore">주식 골라보기</a><a href="#trade" data-view="trade">종목 거래</a><a href="#account" data-view="account">내 계좌</a><a href="/admin">관리자</a></nav><input class="search" id="globalSearch" placeholder="⌕ 선수 종목 검색" aria-label="선수 종목 검색"><button id="login" class="auth" type="button">관리자 인증</button></header>
 
@@ -431,7 +437,7 @@ function drawAccount(){
  
  const filtered=holdings.filter(h=>accountHoldingFilter==='all'||(accountHoldingFilter==='gain'?h.quantity*h.price>=h.cost_basis:h.quantity*h.price<h.cost_basis));
  $('#accountHoldingCount').textContent=holdings.length+'종목';
- $('#holdings').innerHTML=filtered.map(h=>{const current=h.quantity*h.price,profit=current-h.cost_basis,rate=h.cost_basis?profit/h.cost_basis*100:0;return '<tr><td class="account-stock-name">'+esc(h.player_name)+'</td><td class="'+color(profit)+'">'+signed(rate)+'</td><td class="'+color(profit)+'">'+(profit>0?'+':'')+fmt(Math.round(profit))+' P</td><td>'+fmt(Math.round(h.cost_basis/h.quantity))+' P</td><td>'+fmt(h.price)+' P</td><td>'+fmt(h.quantity)+'주</td><td>'+fmt(Math.round(current))+' P</td><td>'+fmt(Math.round(h.cost_basis))+' P</td></tr>'}).join('')||'<tr><td colspan="8" class="account-empty">표시할 보유 주식이 없습니다.</td></tr>';
+ $('#holdings').innerHTML=filtered.map(h=>{const current=h.quantity*h.price,profit=current-h.cost_basis,rate=h.cost_basis?profit/h.cost_basis*100:0;return '<tr><td class="account-stock-name"><span class="account-stock-identity">'+stockAvatar({id:h.player_id,name:h.player_name||'?'},'account-stock-avatar')+'<span>'+esc(h.player_name)+'</span></span></td><td class="'+color(profit)+'">'+signed(rate)+'</td><td class="'+color(profit)+'">'+(profit>0?'+':'')+fmt(Math.round(profit))+' P</td><td>'+fmt(Math.round(h.cost_basis/h.quantity))+' P</td><td>'+fmt(h.price)+' P</td><td>'+fmt(h.quantity)+'주</td><td>'+fmt(Math.round(current))+' P</td><td>'+fmt(Math.round(h.cost_basis))+' P</td></tr>'}).join('')||'<tr><td colspan="8" class="account-empty">표시할 보유 주식이 없습니다.</td></tr>';
  $('#trades').innerHTML=(owner.trades||[]).map(t=>'<div class="event"><span>'+esc(t.player_name||'선수')+' <small>'+esc(t.side==='buy'?'매수':'매도')+' '+fmt(t.quantity)+'주</small></span><b>'+fmt(t.total)+' P</b></div>').join('')||'<div class="panel-body sub">거래 기록이 없습니다.</div>';
 }
 function drawOrder(){const p=priceOf(),qty=Number($('#qty').value),h=holdingOf();$('#orderTotal').textContent=p&&qty>0?fmt(p.price*qty)+' P':'—';$('#available').textContent=owner?fmt(owner.account.balance)+' P':'인증 필요';$('#held').textContent=fmt(h?.quantity||0)+'주';$('#submitOrder').disabled=!owner||!p||!!market.market_halted;$('#tradeState').textContent=market.market_halted?'● 거래 일시정지':'현재가 즉시 체결';$('#submitOrder').textContent=market.market_halted?'거래 일시정지 중':owner?(side==='buy'?'현재가 매수':'현재가 매도'):'관리자 인증 후 거래 가능';$('#submitOrder').className='primary'+(side==='sell'?' sell':'')}
