@@ -383,6 +383,26 @@ body.view-feed{background:#f7f9fc}
 .feed-rail-event{padding:17px;border-radius:12px;background:linear-gradient(125deg,#e7ecff,#f4e4ff);color:#4c3b87;font-size:12px}
 .feed-rail-event p{font-size:10px;line-height:1.6}
 @media(max-width:850px){.feed-columns{grid-template-columns:minmax(0,1fr)}.feed-rail{display:none}.feed-topbar{flex-wrap:wrap}.feed-shell{padding:12px 9px}}
+</style><style>
+/* Community-style discussions instead of corporate news cards */
+.community-post{padding:17px 18px!important}
+.community-avatar{color:#fff!important;font-size:17px!important;border:2px solid #fff;box-shadow:0 1px 4px #cbd5e1}
+.community-bot{font-size:9px;background:#f0ecff;color:#7657ac;border-radius:5px;padding:2px 5px;font-weight:750}
+.community-post .feed-entry-top{margin:7px 0!important}
+.community-post h3{font-size:15px!important;margin:7px 0!important}
+.community-post .feed-entry-main>p{font-size:12px!important;line-height:1.8!important;color:#34435c!important}
+.community-comments{background:#f7f9fd;border-radius:10px;margin-top:10px;padding:10px 12px}
+.community-comments.collapsed{display:none}
+.community-comments-title{font-size:11px;font-weight:850;color:#465674;margin-bottom:8px}
+.community-comments-title small{font-size:9px;font-weight:400;color:#9ca8ba;margin-left:5px}
+.community-comment{display:flex;align-items:flex-start;gap:8px;border-bottom:1px solid #e7edf5;padding:7px 0}
+.community-comment-avatar{width:25px;height:25px;border-radius:50%;flex-shrink:0;color:white;display:grid;place-items:center;font-size:11px;font-weight:800}
+.community-comment b{font-size:10px;color:#364560}
+.community-comment small{font-size:9px;color:#9aabc1}
+.community-comment p{font-size:11px!important;margin:3px 0 0!important;color:#42516a!important}
+.community-reply-box{display:flex;gap:6px;margin-top:10px}
+.community-reply-box input{flex:1;min-width:0;border:1px solid #dce4ef;background:#fff;border-radius:8px;padding:9px 10px;font-size:11px}
+.community-reply-box button{background:#2e78e9;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:800}
 </style></head><body><div class="shell">
 <header class="top"><div class="logo"><i></i><b>쪼사</b>증권</div><nav id="mainNav"><a href="#home" data-view="home" class="active">홈</a><a href="#feed" data-view="feed" id="feedNav">피드</a><a href="#explore" data-view="explore">주식 골라보기</a><a href="#trade" data-view="trade">종목 거래</a><a href="#account" data-view="account">내 계좌</a><a href="/admin">관리자</a></nav><input class="search" id="globalSearch" placeholder="⌕ 선수 종목 검색" aria-label="선수 종목 검색"><button id="login" class="auth" type="button">관리자 인증</button></header>
 
@@ -403,10 +423,10 @@ body.view-feed{background:#f7f9fc}
 <div class="feed-shell">
  <div class="feed-topbar"><div class="feed-filters"><button data-feed-filter="all" class="active">전체</button><button data-feed-filter="game">🏆 경기 뉴스</button><button data-feed-filter="rank">📊 경쟁전 랭킹</button><button data-feed-filter="market">📈 시장 속보</button><button data-feed-filter="event">🎁 가상 이벤트</button></div><input id="feedSearch" type="search" placeholder="⌕ 피드 검색 (선수, 키워드)" aria-label="피드 검색"></div>
  <div class="feed-columns"><main class="feed-stream">
- <div class="feed-compose"><div class="feed-compose-top"><span class="feed-compose-avatar">쪼</span><textarea id="feedPostText" rows="1" maxlength="1000" placeholder="오늘 시장 어떻게 보세요? 의견을 남겨보세요..."></textarea></div><div class="feed-compose-bottom"><span>내 브라우저에만 저장되는 개인 메모입니다.</span><button id="feedPostSubmit" type="button">글 작성</button></div></div>
+ <div class="feed-compose"><div class="feed-compose-top"><span class="feed-compose-avatar">쪼</span><textarea id="feedPostText" rows="1" maxlength="1000" placeholder="오늘 경기 어땠음? 자유롭게 글 남겨보세요..."></textarea></div><div class="feed-compose-bottom"><span>내 글·댓글은 현재 브라우저에만 저장됩니다.</span><button id="feedPostSubmit" type="button">글 작성</button></div></div>
  <div id="feedList" class="feed-list"><div class="feed-empty">소식을 불러오는 중입니다.</div></div>
  <div class="feed-footer"><button id="feedMore" type="button" hidden>더 보기</button><span id="feedUpdated"></span></div></main>
- <aside class="feed-rail"><section class="feed-rail-card"><h3>실시간 이슈 🔥</h3><div id="feedTrending"></div></section><section class="feed-rail-card"><h3>피드 필터</h3><div class="feed-rail-filter"><span>🏆 경기 기록 뉴스</span><span>📊 경쟁전 순위</span><span>📈 시장 변동</span><span>🎁 가상 이벤트 · 허구 표시</span></div></section><section class="feed-rail-event"><b>🎁 쪼사증권 가상 시장 이벤트</b><p>실제 경기 데이터와 가상 시나리오를 구분해서 확인하세요.</p></section></aside>
+ <aside class="feed-rail"><section class="feed-rail-card"><h3>지금 화제인 글 🔥</h3><div id="feedTrending"></div></section><section class="feed-rail-card"><h3>피드 필터</h3><div class="feed-rail-filter"><span>🏆 경기 기록 뉴스</span><span>📊 경쟁전 순위</span><span>📈 시장 변동</span><span>🎁 가상 이벤트 · 허구 표시</span></div></section><section class="feed-rail-event"><b>🎁 쪼사증권 가상 시장 이벤트</b><p>실제 경기 데이터와 가상 시나리오를 구분해서 확인하세요.</p></section></aside>
  </div></div></section>
 <section id="exploreView" class="page-view" hidden><div class="view-heading"><h1>주식 골라보기</h1><p>선수별 현재가와 최근 경기 반영 변동률을 비교해 보세요.</p></div><div class="explore-controls"><input id="exploreSearch" placeholder="선수 이름 검색"><select id="exploreSort"><option value="price">현재가 높은 순</option><option value="up">상승률 높은 순</option><option value="down">하락률 높은 순</option><option value="name">이름순</option></select></div><div class="home-box" id="exploreStocks"></div></section>
 <div id="tradeView" class="page-view" hidden><section class="market-top"><div class="identity"><h1 id="headlineName">선수를 선택하세요 <span class="sub">· PUBG 경쟁전 · 일반전</span></h1><div><span class="price" id="headlinePrice">—</span><span id="headlineChange" class="sub"></span></div></div><div class="metrics"><div class="metric"><span>기준가</span>10,000 P</div><div class="metric"><span>경쟁전 RP</span><b id="rp">—</b></div><div class="metric"><span>최근 반영</span><b id="latest">—</b></div><div class="metric"><span>상장 선수</span><b id="listed">0</b></div><div class="metric"><span>자동 갱신</span><b>5분 주기</b></div></div></section>
@@ -746,31 +766,41 @@ function feedNarrative(x,p){
  if(x.fiction)return '🎭 오늘의 가상 시장 이야기입니다. '+d+' 실제 선수의 발언이나 활동을 취재한 뉴스가 아니라, 쪼사증권이 재미를 위해 만든 시나리오예요. 이런 상황이 정말 생긴다면 시장 분위기는 어떻게 바뀔까요?';
  return d||x.title;
 }
+const communityNames=['치킨먹고싶다','주식은멘탈이다','배그차트연구소','오늘도존버','순위표지킴이','에란겔주민','손절은내일','배당없는주주'];
+const communityColors=['#f3b846','#7a9be8','#9b8ce1','#ef9a83','#6ab9ae','#ca93ba'];
+const communityComments=['와 이거 보니까 다음 판도 궁금해지네 ㅋㅋ','일단 한 경기 더 보고 판단해야 할 듯','지표는 괜찮은데 아직은 지켜보는 중 👀','주가까지 같이 보니까 더 재밌다','이거 커뮤니티에서 얘기 많이 나오겠는데?'];
+function communityHash(str){let n=0;for(const c of String(str))n=(n*31+c.charCodeAt(0))>>>0;return n}
+function communityKey(x){return encodeURIComponent([x.type,x.player||'',x.title,x.created].join('|'))}
+function communityReplies(key){try{return JSON.parse(localStorage.getItem('jjosa_replies_'+key)||'[]')}catch(_){return []}}
 function renderFeed(){
  const root=document.getElementById('feedList');if(!root)return;
  const query=(document.getElementById('feedSearch')?.value||'').trim().toLowerCase();
  const personal=feedMemos().map(x=>({...x,type:'memo',category:'내 메모'}));
- const filtered=[...personal,...feedItems].filter(x=>(feedFilter==='all'||x.type===feedFilter)&&(!query||(x.title+' '+(x.detail||'')+' '+(market.players||[]).find(p=>p.id===x.player)?.name).toLowerCase().includes(query))).sort((a,b)=>new Date(b.created||0)-new Date(a.created||0));
- const visible=filtered.slice(0,feedLimit);
- root.innerHTML=visible.map(x=>{
-  const p=(market.players||[]).find(p=>p.id===x.player),fiction=!!x.fiction,memo=x.type==='memo';
-  const avatar=p?stockAvatar(p,'feed-avatar'):'<span class="feed-avatar feed-system">쪼</span>';
+ const filtered=[...personal,...feedItems].filter(x=>(feedFilter==='all'||x.type===feedFilter)&&(!query||(x.title+' '+(x.detail||'')+' '+((market.players||[]).find(p=>p.id===x.player)?.name||'')).toLowerCase().includes(query))).sort((a,b)=>new Date(b.created||0)-new Date(a.created||0));
+ root.innerHTML=filtered.slice(0,feedLimit).map(x=>{
+  const p=(market.players||[]).find(p=>p.id===x.player),fiction=!!x.fiction,memo=x.type==='memo',key=communityKey(x),h=communityHash(key),author=memo?'나':communityNames[h%communityNames.length];
   const d=new Date(x.created),time=Number.isNaN(d.getTime())?'':d.toLocaleString('ko-KR');
-  const kind={game:'🏆 경기 뉴스',rank:'📊 경쟁전 랭킹',market:'📈 시장 속보',event:'🎁 가상 이벤트',memo:'✍️ 내 메모'}[x.type]||x.category;
+  const kind={game:'🏆 경기 이야기',rank:'📊 경쟁전',market:'📈 주가 이야기',event:'💬 루머·상상',memo:'✍️ 내 글'}[x.type]||x.category;
   const narrative=memo?x.detail:feedNarrative(x,p);
-  const visual=memo?'':('<div class="feed-visual feed-visual-'+x.type+'"><span>'+esc(x.type==='rank'?'STEAM · ASIA TOP 500':x.type==='market'?'쪼사증권 MARKET FLASH':fiction?'가상 시장 시나리오 · 실제 사실 아님':'PUBG 경기 데이터')+'</span><strong>'+esc(x.title)+'</strong><small>'+esc(x.detail||'')+'</small></div>');
-  const key=encodeURIComponent([x.type,x.player||'',x.title,x.created].join('|'));
   const liked=localStorage.getItem('jjosa_feed_like_'+key)==='1';
-  return '<article class="feed-entry"><div class="feed-entry-avatar">'+avatar+'</div><div class="feed-entry-main"><div class="feed-author"><b>'+esc(memo?'내 개인 메모':'쪼사증권 뉴스룸')+'</b>'+(!memo?'<span class="feed-verified">✓</span>':'')+'<small>'+esc(time)+'</small></div><div class="feed-entry-top"><span class="feed-kind feed-kind-'+x.type+'">'+kind+'</span>'+(fiction?'<span class="feed-fiction-label">가상 뉴스 · 실제 사실 아님</span>':memo?'<span class="feed-source-label">이 브라우저에만 저장됨</span>':'<span class="feed-source-label">데이터 기반 자동 작성</span>')+'</div><h3>'+esc(x.title)+'</h3><p>'+esc(narrative)+'</p>'+visual+'<div class="feed-actions"><button data-feed-like="'+key+'" class="'+(liked?'liked':'')+'">'+(liked?'♥':'♡')+' '+(liked?'좋아요 취소':'좋아요')+'</button><button data-feed-copy="'+key+'">↗ 공유</button>'+(memo?'<button data-feed-delete="'+esc(x.id)+'">삭제</button>':p?'<button data-feed-player="'+esc(p.id)+'">종목 보기 →</button>':'')+'</div></div></article>';
- }).join('')||'<div class="feed-empty">해당 분류에 표시할 소식이 없습니다.</div>';
+  const replies=communityReplies(key);
+  const demo=[communityComments[h%communityComments.length],communityComments[(h+3)%communityComments.length]];
+  const comments=[...demo.map((t,i)=>({text:t,author:communityNames[(h+i+2)%communityNames.length],demo:true})),...replies.map(t=>({text:t,author:'나',demo:false}))];
+  const avatar='<span class="feed-avatar community-avatar" style="background:'+communityColors[h%communityColors.length]+'">'+esc(author.slice(0,1))+'</span>';
+  const tag=fiction?'<span class="feed-fiction-label">가상 루머 · 창작</span>':memo?'<span class="feed-source-label">내 브라우저에 저장됨</span>':'<span class="feed-source-label">경기·시세 데이터 참고 · 자동 생성 글</span>';
+  const title=fiction?['이 선수 다음 경기 좀 기대되는 거 나만 그럼? 👀','요즘 이 종목 분위기 묘하지 않음? ㅋㅋ','다음 판에 반등하면 진짜 재밌겠는데','이 조합 상상해봤는데 은근 괜찮을 듯?'][h%4]:x.title;
+  const body=fiction?'※ 아래 내용은 실제 선수 소식이 아닌 커뮤니티용 창작 글입니다.\n'+narrative:narrative;
+  return '<article class="feed-entry community-post"><div class="feed-entry-avatar">'+avatar+'</div><div class="feed-entry-main"><div class="feed-author"><b>'+esc(author)+'</b>'+(!memo?'<span class="community-bot">가상 작성자</span>':'')+'<small>'+esc(time)+'</small></div><div class="feed-entry-top"><span class="feed-kind feed-kind-'+x.type+'">'+kind+'</span>'+tag+'</div><h3>'+esc(title)+'</h3><p>'+esc(body)+'</p><div class="feed-actions"><button data-feed-like="'+key+'" class="'+(liked?'liked':'')+'">'+(liked?'♥':'♡')+' '+(liked?'좋아요 취소':'공감')+'</button><button data-feed-toggle="'+key+'">💬 댓글 '+comments.length+'</button><button data-feed-copy="'+key+'">↗ 공유</button>'+(memo?'<button data-feed-delete="'+esc(x.id)+'">삭제</button>':p?'<button data-feed-player="'+esc(p.id)+'">종목 보기 →</button>':'')+'</div><div class="community-comments" data-comments="'+key+'"><div class="community-comments-title">댓글 '+comments.length+'개 <small>가상 댓글은 예시입니다</small></div>'+comments.map((c,i)=>'<div class="community-comment"><span class="community-comment-avatar" style="background:'+communityColors[(h+i+2)%communityColors.length]+'">'+esc(c.author.slice(0,1))+'</span><div><b>'+esc(c.author)+'</b>'+(c.demo?'<small> · 예시 댓글</small>':'')+'<p>'+esc(c.text)+'</p></div></div>').join('')+'<div class="community-reply-box"><input data-reply-input="'+key+'" maxlength="400" placeholder="댓글을 남겨보세요..."><button data-reply-send="'+key+'">등록</button></div></div></div></article>';
+ }).join('')||'<div class="feed-empty">해당 분류에 표시할 글이 없습니다.</div>';
  root.querySelectorAll('[data-feed-player]').forEach(b=>b.onclick=()=>choose(b.dataset.feedPlayer));
  root.querySelectorAll('[data-feed-like]').forEach(b=>b.onclick=()=>{const k='jjosa_feed_like_'+b.dataset.feedLike;localStorage.setItem(k,localStorage.getItem(k)==='1'?'0':'1');renderFeed()});
- root.querySelectorAll('[data-feed-copy]').forEach(b=>b.onclick=()=>{navigator.clipboard?.writeText(location.origin+'/#feed').then(()=>b.textContent='✓ 링크 복사됨').catch(()=>b.textContent='공유 주소 복사 실패')});
- root.querySelectorAll('[data-feed-delete]').forEach(b=>b.onclick=()=>{if(!confirm('내 메모를 삭제할까요?'))return;localStorage.setItem(feedMemoKey,JSON.stringify(feedMemos().filter(x=>x.id!==b.dataset.feedDelete)));renderFeed()});
+ root.querySelectorAll('[data-feed-copy]').forEach(b=>b.onclick=()=>{navigator.clipboard?.writeText(location.origin+'/#feed').then(()=>b.textContent='✓ 복사됨').catch(()=>b.textContent='복사 실패')});
+ root.querySelectorAll('[data-feed-delete]').forEach(b=>b.onclick=()=>{if(!confirm('내 글을 삭제할까요?'))return;localStorage.setItem(feedMemoKey,JSON.stringify(feedMemos().filter(x=>x.id!==b.dataset.feedDelete)));renderFeed()});
+ root.querySelectorAll('[data-reply-send]').forEach(b=>b.onclick=()=>{const k=b.dataset.replySend,input=root.querySelectorAll('[data-reply-input]').length?[...root.querySelectorAll('[data-reply-input]')].find(el=>el.dataset.replyInput===k):null;const t=input?.value.trim();if(!t)return;const replies=communityReplies(k);replies.push(t);localStorage.setItem('jjosa_replies_'+k,JSON.stringify(replies.slice(-100)));renderFeed()});
+ root.querySelectorAll('[data-feed-toggle]').forEach(b=>b.onclick=()=>{const el=[...root.querySelectorAll('[data-comments]')].find(e=>e.dataset.comments===b.dataset.feedToggle);if(el)el.classList.toggle('collapsed')});
  document.getElementById('feedMore').hidden=filtered.length<=feedLimit;
  document.querySelectorAll('[data-feed-filter]').forEach(b=>b.classList.toggle('active',b.dataset.feedFilter===feedFilter));
- const trending=document.getElementById('feedTrending');
- if(trending){trending.innerHTML=feedItems.filter(x=>!x.fiction).slice(0,5).map((x,i)=>'<div class="feed-trend"><b>'+String(i+1)+'</b><span>'+esc(x.title)+'</span></div>').join('')||'<p class="sub">아직 확인된 소식이 없습니다.</p>'}
+ const trending=document.getElementById('feedTrending');if(trending)trending.innerHTML=feedItems.filter(x=>!x.fiction).slice(0,5).map((x,i)=>'<div class="feed-trend"><b>'+String(i+1)+'</b><span>'+esc(x.title)+'</span></div>').join('')||'<p class="sub">아직 확인된 소식이 없습니다.</p>';
 }
 async function loadFeed(){
  if(feedLoading)return;
@@ -844,7 +874,7 @@ document.getElementById('feedSearch').addEventListener('input',()=>{feedLimit=20
 document.getElementById('feedPostSubmit').onclick=()=>{
  const input=document.getElementById('feedPostText'),body=input.value.trim();
  if(!body)return;
- const notes=feedMemos();notes.unshift({id:String(Date.now()),title:'오늘의 시장 이야기',detail:body,created:new Date().toISOString()});
+ const notes=feedMemos();notes.unshift({id:String(Date.now()),title:'커뮤니티 자유글',detail:body,created:new Date().toISOString()});
  localStorage.setItem(feedMemoKey,JSON.stringify(notes.slice(0,30)));input.value='';feedFilter='all';renderFeed();
 };
 let jjsAnalytics=null,jjsNews=[],jjsRank='gainers',jjsCandles=[];
