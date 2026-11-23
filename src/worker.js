@@ -633,6 +633,13 @@ export default {
   if(path==='/api/leaderboard/steam'&&request.method==='GET'){
    try{return J(await steamTop100(env))}catch(e){return J({entries:[],error:String(e.message||e),region:'pc-as',mode:'squad-fpp'},503)}
   }
+  if(path==='/api/market/players'&&request.method==='GET'){
+   try{
+    const p=await env.DB.prepare('SELECT id,name,platform,price,rp FROM players ORDER BY price DESC').all();
+    const t=await env.DB.prepare('SELECT id,player,match_id,created,price,change_pct,kills,damage,rank,rp_delta,reason FROM ticks ORDER BY id DESC LIMIT 250').all().catch(()=>({results:[]}));
+    return J({players:p.results||[],ticks:t.results||[],stock_images:{},connected:!!env.PUBG_API_KEY,fallback:true});
+   }catch(e){return J({error:'선수 목록 조회 실패',detail:String(e.message||e)},503)}
+  }
   if(path==='/api/state'&&request.method==='GET'){
    const [p,t,last,error,halt]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first(),env.DB.prepare("SELECT v FROM settings WHERE k='market_halt'").first()]);
    const queue=await env.DB.prepare("SELECT name,q.status,q.last_checked,q.last_error,q.applied FROM sync_queue q JOIN players p ON p.id=q.player ORDER BY p.name").all().catch(()=>({results:[]}));
