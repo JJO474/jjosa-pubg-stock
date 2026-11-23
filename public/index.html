@@ -403,6 +403,15 @@ body.view-feed{background:#f7f9fc}
 .community-reply-box{display:flex;gap:6px;margin-top:10px}
 .community-reply-box input{flex:1;min-width:0;border:1px solid #dce4ef;background:#fff;border-radius:8px;padding:9px 10px;font-size:11px}
 .community-reply-box button{background:#2e78e9;color:#fff;border:0;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:800}
+</style><style>
+/* Single unified community feed without category tabs */
+.feed-topbar{border-bottom:1px solid #e6ebf3!important}
+.feed-community-heading{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.feed-community-heading strong{font-size:15px;color:#253550}
+.feed-community-heading span{font-size:11px;color:#8a98ab}
+.community-post .feed-entry-top .feed-kind{font-size:10px}
+.community-comment{padding:9px 0!important}
+.community-comment p{line-height:1.55!important}
 </style></head><body><div class="shell">
 <header class="top"><div class="logo"><i></i><b>쪼사</b>증권</div><nav id="mainNav"><a href="#home" data-view="home" class="active">홈</a><a href="#feed" data-view="feed" id="feedNav">피드</a><a href="#explore" data-view="explore">주식 골라보기</a><a href="#trade" data-view="trade">종목 거래</a><a href="#account" data-view="account">내 계좌</a><a href="/admin">관리자</a></nav><input class="search" id="globalSearch" placeholder="⌕ 선수 종목 검색" aria-label="선수 종목 검색"><button id="login" class="auth" type="button">관리자 인증</button></header>
 
@@ -421,7 +430,7 @@ body.view-feed{background:#f7f9fc}
 </section>
 <section id="feedView" class="page-view" hidden>
 <div class="feed-shell">
- <div class="feed-topbar"><div class="feed-filters"><button data-feed-filter="all" class="active">전체</button><button data-feed-filter="game">🏆 경기 뉴스</button><button data-feed-filter="rank">📊 경쟁전 랭킹</button><button data-feed-filter="market">📈 시장 속보</button><button data-feed-filter="event">🎁 가상 이벤트</button></div><input id="feedSearch" type="search" placeholder="⌕ 피드 검색 (선수, 키워드)" aria-label="피드 검색"></div>
+ <div class="feed-topbar"><div class="feed-community-heading"><strong>💬 커뮤니티</strong><span>경기 · 순위 · 시장 이야기, 한곳에서</span></div><input id="feedSearch" type="search" placeholder="⌕ 피드 검색 (선수, 키워드)" aria-label="피드 검색"></div>
  <div class="feed-columns"><main class="feed-stream">
  <div class="feed-compose"><div class="feed-compose-top"><span class="feed-compose-avatar">쪼</span><textarea id="feedPostText" rows="1" maxlength="1000" placeholder="오늘 경기 어땠음? 자유롭게 글 남겨보세요..."></textarea></div><div class="feed-compose-bottom"><span>내 글·댓글은 현재 브라우저에만 저장됩니다.</span><button id="feedPostSubmit" type="button">글 작성</button></div></div>
  <div id="feedList" class="feed-list"><div class="feed-empty">소식을 불러오는 중입니다.</div></div>
@@ -768,7 +777,48 @@ function feedNarrative(x,p){
 }
 const communityNames=['치킨먹고싶다','주식은멘탈이다','배그차트연구소','오늘도존버','순위표지킴이','에란겔주민','손절은내일','배당없는주주'];
 const communityColors=['#f3b846','#7a9be8','#9b8ce1','#ef9a83','#6ab9ae','#ca93ba'];
-const communityComments=['와 이거 보니까 다음 판도 궁금해지네 ㅋㅋ','일단 한 경기 더 보고 판단해야 할 듯','지표는 괜찮은데 아직은 지켜보는 중 👀','주가까지 같이 보니까 더 재밌다','이거 커뮤니티에서 얘기 많이 나오겠는데?'];
+const communityCommentsByType={
+ game:[
+  '치킨은 잘했는데 마지막 교전 상대도 좀 급하게 들어온 듯 ㅋㅋ',
+  '저 판은 중반 운영이 더 좋았던 것 같음. 킬만 보면 아쉬울 수도 있는데',
+  '이런 판 한 번 나오면 분위기 타긴 하지. 다음 두세 판이 중요함',
+  '마지막 자기장 자리 잡은 게 컸네. 무작정 교전만 한 건 아니었음',
+  '오늘 폼 좋다는 말은 동의하는데 한 판으로 고점 확정은 좀 ㅋㅋ',
+  '이 정도면 잘한 건 맞지. 다만 경쟁전에서도 보여줘야 진짜임'
+ ],
+ rank:[
+  'RP는 올랐는데 순위도 같이 오른 거면 꽤 의미 있네',
+  'TOP500은 하루 사이에도 왔다 갔다 하니까 며칠 더 봐야 함',
+  '요즘 컷이 높아서 저 정도 RP면 안심 못 하겠던데',
+  '순위 오른 건 좋지만 유지하는 게 더 어려운 거 알지 ㅋㅋ',
+  '이 선수는 킬보다 생존 순위 관리가 더 중요한 것 같음',
+  '다음 경쟁전 몇 판 결과가 진짜 중요할 듯'
+ ],
+ market:[
+  '주가 반응 빠르네 ㅋㅋ 근데 이번 판 성적이 계속 나올지는 모르겠음',
+  '지금 들어가긴 좀 무섭다. 다음 경기 보고 판단할래',
+  '지난번에도 올랐다가 바로 빠졌잖아. 너무 들뜨진 말자',
+  '킬딜 잘 나오면 오르는 구조라 납득은 되는데 변동폭 크네',
+  '이미 많이 오른 것 같은데 여기서 더 갈까?',
+  '한 경기로 움직인 거라 추세라고 보긴 아직 이르지'
+ ],
+ event:[
+  '출처 어디임? 공식으로 나온 얘기는 아닌 거지?',
+  '이거 가상 설정이면 재밌긴 한데 실제 소식인 줄 알았네 ㅋㅋ',
+  '확정된 내용 아니면 일단 관망해야지',
+  '만약 진짜 이런 상황이면 주가 변동 꽤 클 듯',
+  '그냥 상상으로는 재밌네. 실제 경기 보고 얘기하자',
+  '아직 근거는 없으니까 너무 진지하게 받아들이진 말자'
+ ],
+ memo:[
+  '이 의견도 일리는 있는데 경기 기록 더 봐야 할 듯',
+  '반대 의견도 궁금하다 ㅋㅋ'
+ ]
+};
+function communitySampleComments(x,h){
+ const pool=communityCommentsByType[x.type]||communityCommentsByType.game;
+ return [pool[h%pool.length],pool[(h+3)%pool.length],pool[(h+5)%pool.length]];
+}
 function communityHash(str){let n=0;for(const c of String(str))n=(n*31+c.charCodeAt(0))>>>0;return n}
 function communityKey(x){return encodeURIComponent([x.type,x.player||'',x.title,x.created].join('|'))}
 function communityReplies(key){try{return JSON.parse(localStorage.getItem('jjosa_replies_'+key)||'[]')}catch(_){return []}}
@@ -776,7 +826,7 @@ function renderFeed(){
  const root=document.getElementById('feedList');if(!root)return;
  const query=(document.getElementById('feedSearch')?.value||'').trim().toLowerCase();
  const personal=feedMemos().map(x=>({...x,type:'memo',category:'내 메모'}));
- const filtered=[...personal,...feedItems].filter(x=>(feedFilter==='all'||x.type===feedFilter)&&(!query||(x.title+' '+(x.detail||'')+' '+((market.players||[]).find(p=>p.id===x.player)?.name||'')).toLowerCase().includes(query))).sort((a,b)=>new Date(b.created||0)-new Date(a.created||0));
+ const filtered=[...personal,...feedItems].filter(x=>(!query||(x.title+' '+(x.detail||'')+' '+((market.players||[]).find(p=>p.id===x.player)?.name||'')).toLowerCase().includes(query))).sort((a,b)=>new Date(b.created||0)-new Date(a.created||0));
  root.innerHTML=filtered.slice(0,feedLimit).map(x=>{
   const p=(market.players||[]).find(p=>p.id===x.player),fiction=!!x.fiction,memo=x.type==='memo',key=communityKey(x),h=communityHash(key),author=memo?'나':communityNames[h%communityNames.length];
   const d=new Date(x.created),time=Number.isNaN(d.getTime())?'':d.toLocaleString('ko-KR');
@@ -784,7 +834,7 @@ function renderFeed(){
   const narrative=memo?x.detail:feedNarrative(x,p);
   const liked=localStorage.getItem('jjosa_feed_like_'+key)==='1';
   const replies=communityReplies(key);
-  const demo=[communityComments[h%communityComments.length],communityComments[(h+3)%communityComments.length]];
+  const demo=memo?[]:communitySampleComments(x,h);
   const comments=[...demo.map((t,i)=>({text:t,author:communityNames[(h+i+2)%communityNames.length],demo:true})),...replies.map(t=>({text:t,author:'나',demo:false}))];
   const avatar='<span class="feed-avatar community-avatar" style="background:'+communityColors[h%communityColors.length]+'">'+esc(author.slice(0,1))+'</span>';
   const tag=fiction?'<span class="feed-fiction-label">가상 루머 · 창작</span>':memo?'<span class="feed-source-label">내 브라우저에 저장됨</span>':'<span class="feed-source-label">경기·시세 데이터 참고 · 자동 생성 글</span>';
@@ -799,7 +849,7 @@ function renderFeed(){
  root.querySelectorAll('[data-reply-send]').forEach(b=>b.onclick=()=>{const k=b.dataset.replySend,input=root.querySelectorAll('[data-reply-input]').length?[...root.querySelectorAll('[data-reply-input]')].find(el=>el.dataset.replyInput===k):null;const t=input?.value.trim();if(!t)return;const replies=communityReplies(k);replies.push(t);localStorage.setItem('jjosa_replies_'+k,JSON.stringify(replies.slice(-100)));renderFeed()});
  root.querySelectorAll('[data-feed-toggle]').forEach(b=>b.onclick=()=>{const el=[...root.querySelectorAll('[data-comments]')].find(e=>e.dataset.comments===b.dataset.feedToggle);if(el)el.classList.toggle('collapsed')});
  document.getElementById('feedMore').hidden=filtered.length<=feedLimit;
- document.querySelectorAll('[data-feed-filter]').forEach(b=>b.classList.toggle('active',b.dataset.feedFilter===feedFilter));
+ 
  const trending=document.getElementById('feedTrending');if(trending)trending.innerHTML=feedItems.filter(x=>!x.fiction).slice(0,5).map((x,i)=>'<div class="feed-trend"><b>'+String(i+1)+'</b><span>'+esc(x.title)+'</span></div>').join('')||'<p class="sub">아직 확인된 소식이 없습니다.</p>';
 }
 async function loadFeed(){
@@ -868,7 +918,7 @@ async function loadFeed(){
  }catch(e){document.getElementById('feedList').innerHTML='<div class="feed-empty">피드를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div>'}
  finally{feedLoading=false}
 }
-document.querySelectorAll('[data-feed-filter]').forEach(b=>b.onclick=()=>{feedFilter=b.dataset.feedFilter;feedLimit=20;renderFeed()});
+
 document.getElementById('feedMore').onclick=()=>{feedLimit+=20;renderFeed()};
 document.getElementById('feedSearch').addEventListener('input',()=>{feedLimit=20;renderFeed()});
 document.getElementById('feedPostSubmit').onclick=()=>{
