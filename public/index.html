@@ -265,6 +265,30 @@ body.view-account #assets .account-summary-broker{padding:20px 24px 19px!importa
 .sidebar-news-item b{font-size:11px;color:#253651;line-height:1.4;overflow-wrap:anywhere}
 .sidebar-news-item small{font-size:10px;color:#8392a8;line-height:1.35}
 .sidebar-news-item:hover{background:#f5f8ff}
+</style><style>
+/* Compact home dashboard: half-height top strip, five leaderboard rows */
+#homeView .market-overview{padding-top:4px!important;padding-bottom:5px!important}
+#homeView .indices{height:145px!important;min-height:145px!important;max-height:145px!important;align-items:stretch!important;overflow:visible}
+#homeView .indices>.index-feature,#homeView .indices>.fun-dashboard,#homeView .indices>.steam-leaderboard{height:145px!important;min-height:0!important;max-height:145px!important}
+#homeView .indices>.index-feature{padding:7px 11px!important;gap:2px!important;overflow:hidden}
+#homeView .indices>.index-feature strong{font-size:19px!important}
+#homeView .indices>.index-feature svg{min-height:0!important;height:30px!important;flex:1!important}
+#homeView .fun-dashboard{grid-template-rows:repeat(2,minmax(0,1fr))!important;gap:5px!important}
+#homeView .fun-dashboard .fun-card{padding:5px 8px!important;gap:3px!important;min-height:0!important}
+#homeView .fun-dashboard .fun-card-top{min-height:0!important}
+#homeView .fun-dashboard .fun-card-content{gap:6px!important;min-height:0!important}
+#homeView .fun-dashboard .fun-avatar{width:27px!important;height:27px!important;flex:0 0 27px!important;font-size:13px!important;border-radius:8px!important}
+#homeView .fun-dashboard .fun-card strong{font-size:11px!important}
+#homeView .fun-dashboard .fun-card small{font-size:9px!important}
+#homeView .fun-dashboard .fun-card-bottom{display:none!important}
+#homeView .fun-dashboard .fun-card-deco{opacity:.06!important}
+#homeView .indices>.steam-leaderboard{overflow:hidden!important}
+#homeView .indices>.steam-leaderboard .steam-board-head{padding:5px 8px!important;min-height:30px!important}
+#homeView .indices>.steam-leaderboard .steam-board-head strong{font-size:10px!important}
+#homeView .indices>.steam-leaderboard .steam-board-head small{font-size:8px!important;margin-top:0!important}
+#homeView .indices>.steam-leaderboard .steam-board-row{height:17px!important;min-height:17px!important}
+#homeView .indices>.steam-leaderboard .steam-board-nav{min-height:20px!important;padding:2px!important}
+@media(max-width:850px){#homeView .indices{height:auto!important;max-height:none!important}#homeView .indices>.index-feature,#homeView .indices>.fun-dashboard,#homeView .indices>.steam-leaderboard{height:145px!important}}
 </style></head><body><div class="shell">
 <header class="top"><div class="logo"><i></i><b>쪼사</b>증권</div><nav id="mainNav"><a href="#home" data-view="home" class="active">홈</a><a href="#home" id="feedNav">피드</a><a href="#explore" data-view="explore">주식 골라보기</a><a href="#trade" data-view="trade">종목 거래</a><a href="#account" data-view="account">내 계좌</a><a href="/admin">관리자</a></nav><input class="search" id="globalSearch" placeholder="⌕ 선수 종목 검색" aria-label="선수 종목 검색"><button id="login" class="auth" type="button">관리자 인증</button></header>
 
@@ -693,12 +717,12 @@ async function loadSidebarCombinedNews(){
 setView(location.hash.replace('#','')||'home');loadSidebarCombinedNews();setInterval(loadSidebarCombinedNews,60000);
 const oldDraw=drawAccount;drawAccount=function(){oldDraw();$('#fundButton').disabled=!owner};load();restore();setInterval(load,15000);
 let steamRankEntries=[],steamRankPage=1;
-const STEAM_RANK_PAGE_SIZE=10;
+const STEAM_RANK_PAGE_SIZE=5;
 function renderSteamRankCard(){
  const list=document.getElementById('steamRankList'),nav=document.getElementById('steamRankPagination');if(!list||!nav)return;
  const pages=Math.max(1,Math.ceil(steamRankEntries.length/STEAM_RANK_PAGE_SIZE));steamRankPage=Math.min(Math.max(1,steamRankPage),pages);
  const registered=new Set((market.players||[]).filter(p=>p.platform==='steam').map(p=>p.id));
- list.innerHTML=steamRankEntries.slice((steamRankPage-1)*10,steamRankPage*10).map(x=>'<div class="steam-board-row"><span class="position">'+x.rank+'</span><span class="player" title="'+esc(x.name)+'">'+esc(x.name)+(registered.has(x.id)?'<span class="listed">●</span>':'')+'</span><span class="points">'+fmt(x.rp)+'</span></div>').join('')||'<div class="steam-board-empty">순위 데이터가 없습니다.</div>';
+ list.innerHTML=steamRankEntries.slice((steamRankPage-1)*STEAM_RANK_PAGE_SIZE,steamRankPage*STEAM_RANK_PAGE_SIZE).map(x=>'<div class="steam-board-row"><span class="position">'+x.rank+'</span><span class="player" title="'+esc(x.name)+'">'+esc(x.name)+(registered.has(x.id)?'<span class="listed">●</span>':'')+'</span><span class="points">'+fmt(x.rp)+'</span></div>').join('')||'<div class="steam-board-empty">순위 데이터가 없습니다.</div>';
  nav.innerHTML='<button data-steam-page="'+(steamRankPage-1)+'" '+(steamRankPage===1?'disabled':'')+' aria-label="이전 페이지">‹</button><span>'+steamRankPage+' / '+pages+'</span><button data-steam-page="'+(steamRankPage+1)+'" '+(steamRankPage===pages?'disabled':'')+' aria-label="다음 페이지">›</button>';
 }
 async function loadSteamLeaderboard(){
