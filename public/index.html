@@ -320,6 +320,35 @@ body.view-feed .market-sidebar{display:none!important}
 .feed-empty{text-align:center;padding:50px 12px;color:#8391a6;border:1px solid #e0e7f1;border-radius:12px}
 .feed-footer{display:flex;justify-content:center;align-items:center;gap:15px;padding:18px;color:#8795aa;font-size:10px}.feed-footer button{border:1px solid #d6e2f1;border-radius:8px;background:#fff;padding:8px 18px;color:#246fd0}
 @media(max-width:640px){.feed-page{padding:18px 10px}.feed-entry{padding:12px}.feed-avatar{width:34px;height:34px}}
+</style><style>
+/* Social-style feed */
+body.view-feed{background:#f7f9fd}
+.feed-page{max-width:850px!important}
+.feed-heading{padding:4px 2px 0}
+.feed-entry{border-radius:14px!important;padding:18px 19px!important;box-shadow:0 3px 16px rgba(33,57,100,.035);gap:11px!important}
+.feed-entry-main{flex:1}
+.feed-author{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px;color:#27364d}
+.feed-author small{margin-left:auto;color:#94a0b1;font-size:10px;font-weight:400}
+.feed-verified{background:#367ded;border-radius:50%;width:15px;height:15px;color:white;text-align:center;font-size:10px;line-height:15px}
+.feed-entry-top{justify-content:flex-start!important;gap:8px!important;margin:8px 0}
+.feed-fiction-label{font-size:10px;color:#9051bb;background:#f4eafd;border-radius:5px;padding:3px 7px;font-weight:750}
+.feed-source-label{font-size:10px;color:#8392a8}
+.feed-entry h3{font-size:16px!important;margin:9px 0!important;line-height:1.4}
+.feed-entry p{font-size:12px!important;line-height:1.75!important;margin-bottom:12px!important}
+.feed-visual{border-radius:12px;min-height:115px;padding:19px 22px;display:flex;flex-direction:column;justify-content:center;gap:9px;overflow:hidden;position:relative}
+.feed-visual span{font-size:10px;font-weight:850;letter-spacing:.7px;opacity:.8}
+.feed-visual strong{font-size:18px;font-weight:850;line-height:1.4;position:relative;z-index:1}
+.feed-visual small{font-size:11px;opacity:.83;position:relative;z-index:1}
+.feed-visual:after{content:'↗';position:absolute;right:12px;bottom:-28px;font-size:125px;font-weight:900;opacity:.09;transform:rotate(-10deg)}
+.feed-visual-game{background:linear-gradient(115deg,#222d42,#5e4730);color:#ffdf97}
+.feed-visual-rank{background:linear-gradient(115deg,#192c52,#2554a3);color:#e6f0ff}
+.feed-visual-market{background:linear-gradient(115deg,#2b2435,#643b4e);color:#ffd6e0}
+.feed-visual-event{background:linear-gradient(115deg,#2b2257,#7046b0);color:#f8eaff}
+.feed-actions{display:flex;gap:18px;border-top:1px solid #e9eef5;padding-top:12px;margin-top:13px}
+.feed-actions button{border:0;background:transparent;padding:4px 0;color:#8a98aa;font-size:11px;font-weight:750;cursor:pointer}
+.feed-actions button:hover,.feed-actions button.liked{color:#e85c77}
+.feed-actions button:last-child{margin-left:auto;color:#3678d9}
+@media(max-width:640px){.feed-entry{padding:12px!important}.feed-visual{padding:15px;min-height:105px}.feed-visual strong{font-size:14px}}
 </style></head><body><div class="shell">
 <header class="top"><div class="logo"><i></i><b>쪼사</b>증권</div><nav id="mainNav"><a href="#home" data-view="home" class="active">홈</a><a href="#feed" data-view="feed" id="feedNav">피드</a><a href="#explore" data-view="explore">주식 골라보기</a><a href="#trade" data-view="trade">종목 거래</a><a href="#account" data-view="account">내 계좌</a><a href="/admin">관리자</a></nav><input class="search" id="globalSearch" placeholder="⌕ 선수 종목 검색" aria-label="선수 종목 검색"><button id="login" class="auth" type="button">관리자 인증</button></header>
 
@@ -663,15 +692,20 @@ $('#globalSearch').oninput=e=>{$('#exploreSearch').value=e.target.value;setView(
 let feedItems=[],feedFilter='all',feedLimit=20,feedLoading=false,feedLastLoaded=0;
 function renderFeed(){
  const root=document.getElementById('feedList');if(!root)return;
- const filtered=feedItems.filter(x=>feedFilter==='all'||x.type===feedFilter);
- const visible=filtered.slice(0,feedLimit);
- root.innerHTML=visible.map(x=>{
-  const p=market.players.find(p=>p.id===x.player);
+ const filtered=feedItems.filter(x=>feedFilter==='all'||x.type===feedFilter),visible=filtered.slice(0,feedLimit);
+ root.innerHTML=visible.map((x,i)=>{
+  const p=(market.players||[]).find(p=>p.id===x.player),isFiction=!!x.fiction;
   const avatar=p?stockAvatar(p,'feed-avatar'):'<span class="feed-avatar feed-system">쪼</span>';
-  const date=new Date(x.created),time=Number.isNaN(date.getTime())?'':date.toLocaleString('ko-KR');
-  return '<article class="feed-entry"><div class="feed-entry-avatar">'+avatar+'</div><div class="feed-entry-main"><div class="feed-entry-top"><span class="feed-kind feed-kind-'+x.type+'">'+esc(x.category)+'</span><time>'+esc(time)+'</time></div><h3>'+esc(x.title)+'</h3><p>'+esc(x.detail||'')+'</p>'+(p?'<button class="feed-open" data-feed-player="'+esc(p.id)+'">선수 종목 보기 →</button>':'')+'</div></article>';
- }).join('')||'<div class="feed-empty">해당 분류에 표시할 확인된 소식이 없습니다.</div>';
+  const d=new Date(x.created),time=Number.isNaN(d.getTime())?'':d.toLocaleString('ko-KR');
+  const kind={game:'🏆 경기 뉴스',rank:'📊 경쟁전 랭킹',market:'📈 시장 속보',event:'🎁 가상 이벤트'}[x.type]||x.category;
+  const media=x.type==='game'?'<div class="feed-visual feed-visual-game"><span>🏆 경기 기록</span><strong>'+esc(x.title)+'</strong><small>'+esc(x.detail||'')+'</small></div>':x.type==='rank'?'<div class="feed-visual feed-visual-rank"><span>STEAM · ASIA TOP 500</span><strong>'+esc(x.title)+'</strong><small>'+esc(x.detail||'')+'</small></div>':x.type==='market'?'<div class="feed-visual feed-visual-market"><span>쪼사증권 MARKET FLASH</span><strong>'+esc(x.title)+'</strong><small>'+esc(x.detail||'')+'</small></div>':'<div class="feed-visual feed-visual-event"><span>🎁 FICTIONAL MARKET STORY</span><strong>'+esc(x.title)+'</strong><small>실제 선수 활동·경기 사실이 아닌 가상 시나리오</small></div>';
+  const key=encodeURIComponent([x.type,x.player||'',x.title,x.created].join('|'));
+  const likes=Number(localStorage.getItem('jjosa_feed_like_'+key)||0);
+  return '<article class="feed-entry"><div class="feed-entry-avatar">'+avatar+'</div><div class="feed-entry-main"><div class="feed-author"><b>쪼사증권 '+(isFiction?'가상 뉴스룸':'공식 데이터')+'</b><span class="feed-verified">✓</span><small>'+esc(time)+'</small></div><div class="feed-entry-top"><span class="feed-kind feed-kind-'+x.type+'">'+kind+'</span>'+(isFiction?'<span class="feed-fiction-label">가상 뉴스 · 실제 사실 아님</span>':'<span class="feed-source-label">경기·시장 데이터 기반</span>')+'</div><h3>'+esc(x.title)+'</h3><p>'+esc(x.detail||'')+'</p>'+media+'<div class="feed-actions"><button data-feed-like="'+key+'" class="'+(likes?'liked':'')+'">♡ <span>'+likes+'</span> 좋아요</button><button data-feed-copy="'+key+'">↗ 공유</button>'+(p?'<button data-feed-player="'+esc(p.id)+'">종목 보기 →</button>':'')+'</div></div></article>';
+ }).join('')||'<div class="feed-empty">해당 분류에 표시할 소식이 없습니다.</div>';
  root.querySelectorAll('[data-feed-player]').forEach(b=>b.onclick=()=>choose(b.dataset.feedPlayer));
+ root.querySelectorAll('[data-feed-like]').forEach(b=>b.onclick=()=>{const k='jjosa_feed_like_'+b.dataset.feedLike;localStorage.setItem(k,localStorage.getItem(k)==='1'?'0':'1');renderFeed()});
+ root.querySelectorAll('[data-feed-copy]').forEach(b=>b.onclick=()=>{navigator.clipboard?.writeText(location.origin+'/#feed').then(()=>{b.textContent='✓ 링크 복사됨'}).catch(()=>{b.textContent='공유 링크: '+location.origin+'/#feed'})});
  document.getElementById('feedMore').hidden=filtered.length<=feedLimit;
  document.querySelectorAll('[data-feed-filter]').forEach(b=>b.classList.toggle('active',b.dataset.feedFilter===feedFilter));
 }
@@ -716,6 +750,23 @@ async function loadFeed(){
    const cat=String(n.category||'');
    if(!/이벤트|가상|시장/.test(cat))continue;
    items.push({type:'event',category:'가상 이벤트 · 공지',title:n.title,detail:n.body||'관리자 등록 시장 공지',created:n.created});
+  }
+  // Clearly labeled, deterministic fictional market commentary; never changes actual stock prices.
+  const scenarioPool=[
+   ['연습 스크림 집중 기간, 교전 지표에 관심','가상 시장 시나리오: 다음 경기에서 킬·딜 흐름이 개선될지 투자자들이 주목하고 있습니다. 실제 훈련 여부는 확인되지 않았습니다.'],
+   ['스쿼드 호흡 변수, 다음 경기 순위 주목','가상 시장 시나리오: 팀 조합이 바뀐다는 가정 아래 생존 순위 변동 가능성을 분석합니다. 실제 팀원 교체 소식이 아닙니다.'],
+   ['맵 적응력 시험대, 미라마 교전 변수 부각','가상 시장 시나리오: 미라마 중심의 가상 경기 환경에서 포지셔닝과 장거리 교전 능력이 관전 포인트로 떠올랐습니다.'],
+   ['최근 주가 상승 이후 기대와 경계 공존','가상 투자 심리 시나리오: 상승 흐름에 대한 기대와 단기 차익 실현 우려가 함께 나타나는 상황을 가정했습니다.']
+  ];
+  const candidates=(market.players||[]).filter(p=>p.name&&p.id).slice().sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+  const seedDay=String(fun.day||new Date().toISOString().slice(0,10)),dayNum=Number(seedDay.replace(/-/g,''))||20261123;
+  if(candidates.length){
+   const times=items.filter(x=>x.created).map(x=>new Date(x.created).getTime()).filter(Number.isFinite).sort((a,b)=>b-a);
+   const base=times[0]||Date.now();
+   for(let j=0;j<Math.min(4,candidates.length);j++){
+    const p=candidates[(dayNum+j*17)%candidates.length],scenario=scenarioPool[(dayNum+j)%scenarioPool.length];
+    items.push({type:'event',category:'가상 이벤트',fiction:true,player:p.id,title:p.name+' · '+scenario[0],detail:scenario[1]+' 주가에는 영향을 주지 않습니다.',created:new Date(base-(j*4+2)*3600000).toISOString()});
+   }
   }
   const seen=new Set();feedItems=items.filter(x=>{const k=[x.type,x.player,x.title,x.created].join('|');if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>new Date(b.created||0)-new Date(a.created||0)).slice(0,200);
   feedLastLoaded=Date.now();
