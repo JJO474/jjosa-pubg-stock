@@ -26,7 +26,8 @@ async function ranked(env,p){
  if(!season)return {season:null,rp:null};
  const d=await pubg(env,p.platform,`players/${encodeURIComponent(p.id)}/seasons/${encodeURIComponent(season)}/ranked`);
  const modes=d.data?.attributes?.rankedGameModeStats||{};
- return {season,rp:(modes['squad-fpp']||modes.squad||{}).currentRankPoint??null};
+ const mode=modes['squad-fpp']||modes.squad||{};
+ return {season,rp:mode.currentRankPoint??null,tier:mode.currentTier?.tier||null,subTier:mode.currentTier?.subTier||null,rankMode:modes['squad-fpp']?'squad-fpp':'squad'};
 }
 async function register(env,name,platform){
  if(!['steam','kakao'].includes(platform))throw Error('steam 또는 kakao 플랫폼만 지원합니다');
@@ -163,16 +164,11 @@ async function pollPlayer(env,p,prefetched=null){
   if(!rpMeta||Date.now()-Date.parse(rpMeta.v)>1800000){
   const r=await ranked(env,p);
   const delta=r.season===p.season&&r.rp!=null&&p.rp!=null?r.rp-p.rp:null;
-  if(delta){
-   const w=await env.DB.prepare("SELECT v FROM settings WHERE k='rp_weight'").first();
-   const pct=clamp(clamp(delta/5,-10,10)*Number(w?.v??50)/100,-10,10);
-   const row=await env.DB.prepare('SELECT price FROM players WHERE id=?').bind(p.id).first();
-   const price=Math.max(100,Math.round(row.price*(1+pct/100)));
-   await env.DB.prepare('INSERT INTO ticks(player,match_id,created,price,change_pct,rp_delta,reason) VALUES(?,?,?,?,?,?,?)').bind(p.id,`rp:${crypto.randomUUID()}`,stamp(),price,pct,delta,'RP 구간 변화').run();
-   await env.DB.prepare('UPDATE players SET price=? WHERE id=?').bind(price,p.id).run();
-  }
+  // RP is informational only: ranked match placement is already priced in perf.
+  // Do not apply a second RP price change for the same competitive results.
   await env.DB.prepare('UPDATE players SET rp=?,season=?,updated=? WHERE id=?').bind(r.rp,r.season,stamp(),p.id).run();
   if(r.rp!=null)await env.DB.prepare('INSERT INTO snapshots(player,created,season,rp) VALUES(?,?,?,?)').bind(p.id,stamp(),r.season,r.rp).run();
+  await env.DB.prepare("INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind('rank_detail:'+p.id,JSON.stringify({tier:r.tier,subTier:r.subTier,rankMode:r.rankMode,season:r.season,checked:stamp()})).run();
   await env.DB.prepare("INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(rpMetaKey,stamp()).run();
   }
  }
@@ -586,6 +582,11 @@ export default {
    const [p,t,last,error,halt]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first(),env.DB.prepare("SELECT v FROM settings WHERE k='market_halt'").first()]);
    const queue=await env.DB.prepare("SELECT name,q.status,q.last_checked,q.last_error,q.applied FROM sync_queue q JOIN players p ON p.id=q.player ORDER BY p.name").all().catch(()=>({results:[]}));
    const completed=queue.results.filter(x=>x.status==='done').length;
+   const rankRows=await env.DB.prepare("SELECT k,v FROM meta WHERE k LIKE 'rank_detail:%'").all();
+   const rankMap=new Map(rankRows.results.map(x=>[x.k.slice(12),JSON.parse(x.v)]));
+   const rankedPlayers=p.results.filter(x=>x.rp!=null).slice().sort((a,b)=>Number(b.rp)-Number(a.rp));
+   const rankPositions=new Map(rankedPlayers.map((x,i)=>[x.id,i+1]));
+   p.results=p.results.map(x=>({...x,rank_tier:rankMap.get(x.id)?.tier||null,rank_subtier:rankMap.get(x.id)?.subTier||null,rank_mode:rankMap.get(x.id)?.rankMode||null,rp_rank:rankPositions.get(x.id)||null}));
    const stockImages=await stockImageMap(env.DB);
    return J({players:p.results,stock_images:stockImages,ticks:t.results,market_halted:halt?.v==='1',connected:!!env.PUBG_API_KEY,interval:300,sync:{running:false,last_finished:last?.v||null,error:error?.v||null,completed,queue:queue.results}});
   }
