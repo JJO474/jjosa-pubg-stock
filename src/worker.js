@@ -624,15 +624,9 @@ export default {
     else daily.get(t.player).price=end;
    }
    const kings=[...daily.values()].filter(x=>x.start>0).map(x=>({...x,pct:(x.price/x.start-1)*100})).sort((a,b)=>b.pct-a.pct).slice(0,3);
-   const achievements=[];
-   for(const p of players.results){
-    const stats=await db.prepare("SELECT COUNT(CASE WHEN rank=1 THEN 1 END) AS chickens,MAX(kills) AS max_kills,COUNT(*) AS games FROM ticks WHERE player=? AND kills IS NOT NULL").bind(p.id).first();
-    const badges=[];
-    if(Number(stats.chickens)>=10)badges.push('치킨 사냥꾼');
-    if(Number(stats.max_kills)>=10)badges.push('킬 머신');
-    if(Number(stats.games)>=100)badges.push('베테랑');
-    if(badges.length)achievements.push({id:p.id,name:p.name,badges});
-   }
+   const badgeStats=await db.prepare("SELECT player,COUNT(CASE WHEN rank=1 THEN 1 END) AS chickens,MAX(kills) AS max_kills,COUNT(*) AS games FROM ticks WHERE kills IS NOT NULL GROUP BY player").all();
+   const badgeMap=new Map(badgeStats.results.map(x=>[x.player,x]));
+   const achievements=players.results.map(p=>{const st=badgeMap.get(p.id)||{},badges=[];if(Number(st.chickens)>=10)badges.push('치킨 사냥꾼');if(Number(st.max_kills)>=10)badges.push('킬 머신');if(Number(st.games)>=100)badges.push('베테랑');return {id:p.id,name:p.name,badges}}).filter(x=>x.badges.length);
    let changes=[];try{changes=JSON.parse(rankChange?.v||'{}').changes||[]}catch(_){}
    return J({alerts,kings,rank_changes:changes.slice(0,10),achievements:achievements.slice(0,10),day:date,generated_at:stamp()});
   }
