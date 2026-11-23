@@ -34,7 +34,63 @@ body{background:#f3f4f7;color:#252c38;font-size:12px;padding-bottom:34px}.shell{
 .premium-indicators{display:flex;gap:12px;flex-wrap:wrap;padding:8px 0;font-size:11px;color:#a7b8ce}
 .premium-news-heading{font-size:11px;color:#97a9c3;padding:8px 0}
 @media(max-width:900px){.premium-tools{grid-template-columns:1fr}}@media(max-width:500px){.premium-heatmap{grid-template-columns:repeat(3,minmax(0,1fr))}.premium-card{padding:11px}}
-</style><style>.premium-portfolio{padding:14px;border:1px solid var(--line);border-radius:10px;margin:12px 0}.premium-portfolio-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px}.premium-portfolio-stats>div{display:flex;flex-direction:column;gap:7px;background:#252a34;padding:12px;border-radius:8px}.premium-portfolio-stats small{color:var(--sub)}.premium-portfolio-stats b{font-size:16px}.premium-portfolio .jjs-line{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}@media(max-width:600px){.premium-portfolio-stats{grid-template-columns:1fr}}</style></head><body><div class="shell">
+</style><style>.premium-portfolio{padding:14px;border:1px solid var(--line);border-radius:10px;margin:12px 0}.premium-portfolio-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px}.premium-portfolio-stats>div{display:flex;flex-direction:column;gap:7px;background:#252a34;padding:12px;border-radius:8px}.premium-portfolio-stats small{color:var(--sub)}.premium-portfolio-stats b{font-size:16px}.premium-portfolio .jjs-line{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}@media(max-width:600px){.premium-portfolio-stats{grid-template-columns:1fr}}</style><style>
+/* Compact market workspace: prioritize one-screen scanning on desktop. */
+@media(min-width:1100px){
+ .top{height:42px;padding:0 16px;gap:20px}.top nav{gap:17px}
+ .notice-strip{height:28px}
+ .app-layout{grid-template-columns:minmax(0,1fr) clamp(220px,17vw,275px)}
+ .market-sidebar{padding:10px 12px}
+ .market-overview{padding:10px 2% 9px}
+ .market-caption{margin-bottom:8px;gap:14px;font-size:10px}
+ .indices{min-height:112px;gap:7px!important;grid-template-columns:1.5fr .9fr .9fr .9fr 1.2fr}
+ .index-feature{min-height:112px;padding:9px 12px;gap:2px}
+ .index-feature strong{font-size:22px}
+ .index-feature svg{height:34px;min-height:25px}
+ .index-feature small,.index-stack small{font-size:10px}
+ .index-stack>div{padding:6px 9px;gap:2px}
+ .index-stack b{font-size:15px}
+ .index-stack span{font-size:9px}
+ .schedule-card{padding:9px 10px}.schedule-card p{margin:5px 0;font-size:10px}
+ .market-section{padding:0 2% 10px}
+ .market-section-tabs{height:34px;gap:18px}
+ .market-section-tabs button{padding:8px 0;font-size:11px}
+ .market-filters{padding:7px 0;gap:5px}
+ .market-filters button{padding:5px 8px}
+ .market-columns{height:29px;font-size:10px}
+ .rank-row{min-height:43px;font-size:11px}
+ .rank-avatar{width:25px;height:25px}
+ .rank-identity{gap:6px}
+ .rank-name{gap:6px}
+ .market-workspace{grid-template-columns:minmax(0,3fr) minmax(245px,1.15fr);min-height:0}
+ .market-preview{padding:11px 13px}
+ .preview-heading b{font-size:14px}
+ .preview-price{font-size:23px;margin-top:6px}
+ .market-preview svg{height:140px;margin:4px 0}
+ .preview-chart-caption{padding-bottom:8px}
+ .preview-stats{gap:6px;margin:8px 0}
+ .preview-stat{padding:7px}
+ .preview-meta{padding:7px 0}
+ .preview-go{padding:9px;margin:9px 0}
+ .market-preview h3{margin:10px 0 5px}
+ .side-tools{margin-bottom:10px}
+ .sidebar-title{margin:12px 0 7px}
+ .side-stock{padding:7px 2px}
+ .stock-pagination{padding:10px 6px 12px}
+}
+@media(min-width:1100px) and (max-width:1360px){
+ .app-layout{grid-template-columns:minmax(0,1fr) 220px}
+ .market-columns,.rank-row{grid-template-columns:minmax(150px,2fr) minmax(75px,1fr) minmax(65px,.8fr) minmax(55px,.7fr) minmax(55px,.7fr) minmax(90px,1fr);gap:5px}
+ .market-workspace{grid-template-columns:minmax(0,2.6fr) minmax(225px,1fr)}
+}
+@media(max-width:1099px){
+ .indices{grid-template-columns:repeat(2,minmax(0,1fr));height:auto}
+ .index-feature{grid-column:1/-1}
+ .market-workspace{grid-template-columns:minmax(0,1fr)}
+ .market-table-area{border-right:0}
+ .market-preview{border-top:1px solid #e7e9ed}
+}
+</style></head><body><div class="shell">
 <header class="top"><div class="logo"><i></i><b>쪼사</b>증권</div><nav id="mainNav"><a href="#home" data-view="home" class="active">홈</a><a href="#home" id="feedNav">피드</a><a href="#explore" data-view="explore">주식 골라보기</a><a href="#trade" data-view="trade">종목 거래</a><a href="#account" data-view="account">내 계좌</a><a href="/admin">관리자</a></nav><input class="search" id="globalSearch" placeholder="⌕ 선수 종목 검색" aria-label="선수 종목 검색"><button id="login" class="auth" type="button">관리자 인증</button></header>
 <div class="notice-strip">📢　쪼사증권은 PUBG 경기 결과를 기반으로 주가가 움직이는 가상 증권시장입니다.　 <a href="/admin">운영 안내 ›</a></div>
 <div class="app-layout"><div class="app-main"><section id="homeView" class="page-view">
