@@ -1043,7 +1043,7 @@ async function loadFeed(){
 
 setInterval(()=>{if(document.getElementById('feedList'))renderFeed()},60000);
 document.getElementById('feedSearch').addEventListener('input',()=>{feedPage=1;renderFeed()});
-document.getElementById('forumNewPost').onclick=()=>{document.getElementById('feedPostText').focus();document.getElementById('forumComposer').scrollIntoView({behavior:'smooth',block:'center'})};
+const forumNewPostButton=document.getElementById('forumNewPost');if(forumNewPostButton)forumNewPostButton.onclick=()=>{document.getElementById('feedPostText').focus();document.getElementById('forumComposer').scrollIntoView({behavior:'smooth',block:'center'})};
 
 
 
