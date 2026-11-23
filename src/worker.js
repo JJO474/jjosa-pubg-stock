@@ -31,7 +31,7 @@ async function steamTop100(env){
   if(!season)throw Error('현재 시즌을 확인할 수 없습니다');
   const data=await pubg(env,'pc-as','leaderboards/'+encodeURIComponent(season)+'/squad-fpp');
   const included=(data.included||[]).filter(x=>x.type==='player');
-  const entries=included.map((x,i)=>{const a=x.attributes||{},v=a.stats||{};return {id:x.id,name:a.name||'',rank:Number(a.rank)||i+1,rp:Number(v.rankPoints)||0,kda:v.kda==null?null:Number(v.kda),tier:v.tier||null,subTier:v.subTier||null}}).sort((a,b)=>a.rank-b.rank).slice(0,100);
+  const entries=included.map((x,i)=>{const a=x.attributes||{},v=a.stats||{};return {id:x.id,name:a.name||'',rank:Number(a.rank)||i+1,rp:Number(v.rankPoints)||0,kda:v.kda==null?null:Number(v.kda),tier:v.tier||null,subTier:v.subTier||null}}).sort((a,b)=>a.rank-b.rank).slice(0,500);
   if(!entries.length)throw Error('PUBG 리더보드 결과가 비어 있습니다');
   const result={region:'pc-as',mode:'squad-fpp',season,updated:stamp(),entries};
   await db.prepare("INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(key,JSON.stringify(result)).run();
