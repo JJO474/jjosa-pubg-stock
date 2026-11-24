@@ -599,6 +599,23 @@ export default {
   if(path==='/api/united/status'&&request.method==='GET'){
    return J({ok:true,api_key_configured:!!env.PUBG_API_KEY,db_isolated:true,mode:'read-only',generated_at:stamp()});
   }
+  if(path==='/api/united/analyze-2026'&&request.method==='GET'){
+   const list=await unitedPubg(env,'tournaments',true);
+   const candidates=unitedTournamentSummary(list).filter(x=>String(x.createdAt||'').startsWith('2026-'));
+   const results=[];
+   for(const t of candidates.slice(0,80)){
+    try{
+     const td=await unitedPubg(env,'tournaments/'+encodeURIComponent(t.id),true);
+     const ids=(td?.data?.relationships?.matches?.data||[]).map(x=>x.id).filter(Boolean);
+     let sample=null;
+     if(ids.length){
+      try{let md;try{md=await unitedPubg(env,'shards/tournament/matches/'+encodeURIComponent(ids[0]),false)}catch(_){md=await unitedPubg(env,'shards/tournament/matches/'+encodeURIComponent(ids[0]),true)}sample=unitedMatchSummary(md)}catch(_){}
+     }
+     results.push({id:t.id,createdAt:t.createdAt,match_count:ids.length,sample_match_id:ids[0]||null,match_created_at:sample?.createdAt||null,map:sample?.mapName||null,players:sample?.participants?.length||0,teams:sample?.rosters?.length||0,telemetry:!!sample?.telemetry,player_names:(sample?.participants||[]).map(p=>p.name).filter(Boolean).slice(0,80)});
+    }catch(e){results.push({id:t.id,createdAt:t.createdAt,error:String(e.message||e)})}
+   }
+   return J({year:2026,count:results.length,candidates:results,generated_at:stamp(),note:'각 Tournament의 첫 경기 표본을 읽어 후보 식별에 사용합니다. DB에는 저장하지 않습니다.'});
+  }
   if(path==='/api/united/tournaments'&&request.method==='GET'){
    const d=await unitedPubg(env,'tournaments',true);
    return J({tournaments:unitedTournamentSummary(d),raw_count:Array.isArray(d?.data)?d.data.length:0,generated_at:stamp()});
