@@ -599,6 +599,35 @@ export default {
   if(path==='/api/united/status'&&request.method==='GET'){
    return J({ok:true,api_key_configured:!!env.PUBG_API_KEY,db_isolated:true,mode:'read-only',generated_at:stamp()});
   }
+  if(path==='/api/united/find-pgc26'&&request.method==='GET'){
+   const officialTeams=['VP','17','EA','DNS','T1','FLC','TWIS','MiTH','TL','GodL','C9','WOLF','4AM','PeRo','EDG','JDG','NAVI','09','ACE','VIT','DN','GK','FN','AE','SE','BRU','SP','FS','AL','RS','APG','S2G'];
+   const list=await unitedPubg(env,'tournaments',true);
+   const candidates=unitedTournamentSummary(list).filter(x=>String(x.createdAt||'').startsWith('2026-'));
+   const results=[];
+   for(const t of candidates.slice(0,80)){
+    try{
+     const td=await unitedPubg(env,'tournaments/'+encodeURIComponent(t.id),true);
+     const ids=(td?.data?.relationships?.matches?.data||[]).map(x=>x.id).filter(Boolean);
+     const sampleIds=[...new Set([ids[0],ids[Math.floor(ids.length/2)],ids[ids.length-1]].filter(Boolean))];
+     const names=new Set();let maxTeams=0,minTeams=999,latest=null,earliest=null,telemetry=false;
+     for(const mid of sampleIds){
+      try{
+       let md;try{md=await unitedPubg(env,'shards/tournament/matches/'+encodeURIComponent(mid),false)}catch(_){md=await unitedPubg(env,'shards/tournament/matches/'+encodeURIComponent(mid),true)}
+       const s=unitedMatchSummary(md);for(const p of s.participants||[])if(p.name)names.add(p.name);
+       maxTeams=Math.max(maxTeams,s.rosters?.length||0);minTeams=Math.min(minTeams,s.rosters?.length||0);telemetry=telemetry||!!s.telemetry;
+       if(s.createdAt){if(!earliest||s.createdAt<earliest)earliest=s.createdAt;if(!latest||s.createdAt>latest)latest=s.createdAt}
+      }catch(_){}
+     }
+     const id=String(t.id).toLowerCase(),dateScore=(earliest&&Date.parse(earliest)>=Date.parse('2026-11-24'))?35:(t.createdAt&&Date.parse(t.createdAt)>=Date.parse('2026-11-15'))?20:0;
+     const scaleScore=maxTeams>=16?20:maxTeams>=14?12:0,matchScore=ids.length>=10?15:ids.length>=5?8:0,playerScore=names.size>=60?15:names.size>=40?8:0;
+     const nameScore=/pgc|global|champ/.test(id)?15:0;
+     const score=Math.min(100,dateScore+scaleScore+matchScore+playerScore+nameScore);
+     results.push({id:t.id,score,createdAt:t.createdAt,match_count:ids.length,sampled_matches:sampleIds.length,earliest_sample:earliest,latest_sample:latest,unique_players:names.size,max_teams:maxTeams,min_teams:minTeams===999?0:minTeams,telemetry,player_names:[...names].sort()});
+    }catch(e){results.push({id:t.id,score:0,error:String(e.message||e)})}
+   }
+   results.sort((a,b)=>b.score-a.score||String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+   return J({target:'PGC 2026 / PUBG UNITED 2026 PC',official_team_count:32,official_team_tags:officialTeams,candidates:results,generated_at:stamp(),method:'2026 tournaments; first/middle/last match samples; date, lobby scale, match count and player count heuristic. Candidate score is discovery aid, not official identity proof.'});
+  }
   if(path==='/api/united/analyze-2026'&&request.method==='GET'){
    const list=await unitedPubg(env,'tournaments',true);
    const candidates=unitedTournamentSummary(list).filter(x=>String(x.createdAt||'').startsWith('2026-'));
