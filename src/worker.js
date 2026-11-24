@@ -870,6 +870,7 @@ export default {
    if(path==='/api/market/halt'){const halted=body.halted===true;await env.DB.prepare("INSERT INTO settings(k,v) VALUES('market_halt',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(halted?'1':'0').run();return J({ok:true,market_halted:halted});}
    if(path==='/api/settings'){const w=Number(body.rp_weight);if(!Number.isFinite(w)||w<0||w>100)throw Error('RP 비중은 0~100');await env.DB.prepare("INSERT INTO settings(k,v) VALUES('rp_weight',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(w)).run();return J({ok:true});}
   }
+  if(path==='/united-news')return env.ASSETS.fetch(new Request(new URL('/united-news.html',url),request));
   if(path==='/united-api')return env.ASSETS.fetch(new Request(new URL('/united-api.html',url),request));
   if(path==='/admin'||path==='/overlay')return env.ASSETS.fetch(new Request(new URL(`${path}.html`,url),request));
   return env.ASSETS.fetch(request);
