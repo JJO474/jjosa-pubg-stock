@@ -34,6 +34,20 @@ async function unitedPubg(env,path,needsAuth=true){
   }
   return body;
 }
+const UNITED_OFFICIAL_NEWS=[
+ {id:'pgc-teams-2026',kind:'official',title:'PGC 2026 참가 32팀 확정',summary:'PGC 2026에 출전할 32개 팀이 확정됐다. PGS 포인트, 지역 PGC 포인트, 개최국 와일드카드를 통해 참가팀이 구성됐다.',published_at:'2026-11-05T00:00:00Z',source:'PUBG ESPORTS',url:'https://pubgesports.com/en/news/11375',tags:['PGC 2026','32팀']},
+ {id:'pgc-details-2026',kind:'official',title:'PGC 2026 대회 방식·상금 공개',summary:'12월 1일부터 13일까지 32팀이 경쟁한다. 기본 상금은 150만 달러이며 그랜드 파이널 우승 상금은 50만 달러다.',published_at:'2026-11-12T00:00:00Z',source:'PUBG ESPORTS',url:'https://pubgesports.com/en/news/11316',tags:['PGC 2026','상금','대회방식']},
+ {id:'pgc-tickets-2026',kind:'official',title:'PGC 2026 그랜드 파이널 이스탄불 개최',summary:'그랜드 파이널은 12월 11~13일 이스탄불에서 열리며 16개 팀이 우승을 두고 경쟁한다.',published_at:'2026-11-16T00:00:00Z',source:'PUBG ESPORTS',url:'https://pubgesports.com/en/news/11319',tags:['PGC 2026','그랜드파이널','이스탄불']},
+ {id:'united-event-2026',kind:'official',title:'PUBG UNITED 2026 이벤트 페이지 오픈',summary:'PGC 2026과 2026 PMGC를 한곳에서 다루는 UNITED 이벤트 페이지와 우승 예측 이벤트가 공개됐다.',published_at:'2026-11-17T00:00:00Z',source:'PUBG ESPORTS',url:'https://pubgesports.com/en/news/11403',tags:['UNITED 2026','PGC 2026','이벤트']},
+ {id:'pgc-ai-2026',kind:'official',title:'PGC 2026 AI 우승 예측 콘텐츠 공개',summary:'PGC 2026 개막을 앞두고 AI 기반 우승 예측 콘텐츠가 공개됐다. 시장 기대감 참고용 콘텐츠이며 실제 경기 결과를 보장하지 않는다.',published_at:'2026-11-17T00:00:00Z',source:'PUBG ESPORTS',url:'https://pubgesports.com/en/news/11317',tags:['PGC 2026','우승예측']}
+];
+function unitedNewsDerived(){
+ const now=Date.now(),items=[];
+ const days=Math.ceil((Date.parse('2026-12-01T11:00:00Z')-now)/86400000);
+ if(days>=0)items.push({id:'market-countdown',kind:'market',title:`PGC 2026 개막 D-${days}…32개 팀 종목 관심 구간 진입`,summary:'개막이 가까워지면서 팀·선수 종목의 변동성이 커질 수 있는 시점이다. 이 글은 대회 일정에 기반한 UNITED 증권 자체 시장 브리핑이다.',published_at:new Date().toISOString(),source:'UNITED 증권',tags:['PGC 2026','시장브리핑']});
+ items.push({id:'community-vp',kind:'rumor',title:'[시장루머] 우승 후보 선반영 논쟁…개막 전 기대감 어디까지?',summary:'공식 우승 예측 콘텐츠를 계기로 강팀 종목의 기대감이 이미 가격에 반영됐다는 가상의 시장 의견 시나리오다. 실제 사실·투자정보가 아니다.',published_at:new Date(now-1800000).toISOString(),source:'UNITED 커뮤니티 · 가상',tags:['시장루머','가상']});
+ return items;
+}
 function unitedTournamentSummary(d){
   const rows=Array.isArray(d?.data)?d.data:[];
   return rows.map(x=>({id:x.id,type:x.type,createdAt:x.attributes?.createdAt||null}));
@@ -596,6 +610,12 @@ export default {
  async fetch(request,env){
  const url=new URL(request.url),path=url.pathname;
  try{
+  if(path==='/api/united/news-center'&&request.method==='GET'){
+   const official=UNITED_OFFICIAL_NEWS.map(x=>({...x,verified:true,virtual:false}));
+   const derived=unitedNewsDerived().map(x=>({...x,verified:x.kind==='market',virtual:x.kind==='rumor'}));
+   const items=[...derived,...official].sort((a,b)=>String(b.published_at).localeCompare(String(a.published_at)));
+   return J({items,counts:{all:items.length,official:items.filter(x=>x.kind==='official').length,market:items.filter(x=>x.kind==='market').length,rumor:items.filter(x=>x.kind==='rumor').length},sources:['PUBG ESPORTS','PUBG.com','UNITED 증권'],generated_at:stamp(),storage:'read-only preview; not inserted into existing feed/D1'});
+  }
   if(path==='/api/united/status'&&request.method==='GET'){
    return J({ok:true,api_key_configured:!!env.PUBG_API_KEY,db_isolated:true,mode:'read-only',generated_at:stamp()});
   }
