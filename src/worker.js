@@ -11,8 +11,7 @@ async function pubg(env,platform,path){
   if(!exempt){if(arr.length>=8)throw Error('API_RATE_LIMIT: 잠시 후 다시 갱신해 주세요');
   arr.push(now);
   await env.DB.prepare("INSERT INTO meta(k,v) VALUES('api_gate',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(arr)).run();}
-  const cleanPath=String(path||'').replace(/^\/+/, '');
-  const res=await fetch(`https://api.pubg.com/${cleanPath}`,{headers});
+  const res=await fetch(`https://api.pubg.com/shards/${platform}/${path}`,{headers:{Authorization:`Bearer ${env.PUBG_API_KEY}`,Accept:'application/vnd.api+json'}});
   if(!res.ok){
     let apiError='';
     try{const body=await res.json();apiError=String(body?.errors?.[0]?.detail||body?.errors?.[0]?.title||body?.message||'').slice(0,180)}catch(_){}
@@ -26,7 +25,8 @@ async function unitedPubg(env,path,needsAuth=true){
   if(needsAuth&&!env.PUBG_API_KEY)throw Error('PUBG_API_KEY 비밀키가 설정되지 않았습니다');
   const headers={Accept:'application/vnd.api+json','User-Agent':'JJOSAUnitedAPI/1.0'};
   if(needsAuth)headers.Authorization=`Bearer ${env.PUBG_API_KEY}`;
-  const res=await fetch(`https://api.pubg.com/${path.replace(/^\\/+/, '')}`,{headers});
+  const cleanPath=String(path||'').replace(/^\/+/, '');
+  const res=await fetch(`https://api.pubg.com/${cleanPath}`,{headers});
   let body=null;try{body=await res.json()}catch(_){}
   if(!res.ok){
     const apiError=String(body?.errors?.[0]?.detail||body?.errors?.[0]?.title||body?.message||'').slice(0,240);
