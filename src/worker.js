@@ -11,7 +11,8 @@ async function pubg(env,platform,path){
   if(!exempt){if(arr.length>=8)throw Error('API_RATE_LIMIT: 잠시 후 다시 갱신해 주세요');
   arr.push(now);
   await env.DB.prepare("INSERT INTO meta(k,v) VALUES('api_gate',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(JSON.stringify(arr)).run();}
-  const res=await fetch(`https://api.pubg.com/shards/${platform}/${path}`,{headers:{Authorization:`Bearer ${env.PUBG_API_KEY}`,Accept:'application/vnd.api+json','User-Agent':'JJOSAStock/3.0'}});
+  const cleanPath=String(path||'').replace(/^\/+/, '');
+  const res=await fetch(`https://api.pubg.com/${cleanPath}`,{headers});
   if(!res.ok){
     let apiError='';
     try{const body=await res.json();apiError=String(body?.errors?.[0]?.detail||body?.errors?.[0]?.title||body?.message||'').slice(0,180)}catch(_){}
