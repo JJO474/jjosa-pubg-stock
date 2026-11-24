@@ -21,6 +21,29 @@ async function pubg(env,platform,path){
   }
   return res.json();
 }
+async function unitedPubg(env,path,needsAuth=true){
+  if(needsAuth&&!env.PUBG_API_KEY)throw Error('PUBG_API_KEY 비밀키가 설정되지 않았습니다');
+  const headers={Accept:'application/vnd.api+json','User-Agent':'JJOSAUnitedAPI/1.0'};
+  if(needsAuth)headers.Authorization=`Bearer ${env.PUBG_API_KEY}`;
+  const res=await fetch(`https://api.pubg.com/${path.replace(/^\\/+/, '')}`,{headers});
+  let body=null;try{body=await res.json()}catch(_){}
+  if(!res.ok){
+    const apiError=String(body?.errors?.[0]?.detail||body?.errors?.[0]?.title||body?.message||'').slice(0,240);
+    throw Error(`PUBG Tournament API ${res.status}${apiError?' — '+apiError:''}`);
+  }
+  return body;
+}
+function unitedTournamentSummary(d){
+  const rows=Array.isArray(d?.data)?d.data:[];
+  return rows.map(x=>({id:x.id,type:x.type,createdAt:x.attributes?.createdAt||null}));
+}
+function unitedMatchSummary(m){
+  const a=m?.data?.attributes||{},included=m?.included||[];
+  const participants=included.filter(x=>x.type==='participant').map(x=>{const s=x.attributes?.stats||{};return {id:x.id,name:s.name||'',playerId:s.playerId||'',kills:Number(s.kills||0),damage:Number(s.damageDealt||0),assists:Number(s.assists||0),dbnos:Number(s.DBNOs||0),winPlace:Number(s.winPlace||0),timeSurvived:Number(s.timeSurvived||0)}});
+  const rosters=included.filter(x=>x.type==='roster').map(x=>{const s=x.attributes?.stats||{};return {id:x.id,rank:Number(s.rank||0),teamId:s.teamId??null,won:s.won||'false',participantIds:(x.relationships?.participants?.data||[]).map(p=>p.id)}});
+  const assets=included.filter(x=>x.type==='asset').map(x=>({id:x.id,name:x.attributes?.name||'',url:x.attributes?.URL||null,createdAt:x.attributes?.createdAt||null}));
+  return {id:m?.data?.id||null,createdAt:a.createdAt||null,duration:a.duration||null,mapName:a.mapName||null,gameMode:a.gameMode||null,matchType:a.matchType||null,participants,rosters,assets,telemetry:assets.find(x=>String(x.name).toLowerCase()==='telemetry')?.url||assets.find(x=>x.url)?.url||null};
+}
 async function steamTop100(env){
  const db=env.DB,key='steam_top100_as_fpp',cached=await db.prepare('SELECT v FROM meta WHERE k=?').bind(key).first();
  let prior=null;try{prior=cached?JSON.parse(cached.v):null}catch(_){}
@@ -572,6 +595,27 @@ export default {
  async fetch(request,env){
  const url=new URL(request.url),path=url.pathname;
  try{
+  if(path==='/api/united/status'&&request.method==='GET'){
+   return J({ok:true,api_key_configured:!!env.PUBG_API_KEY,db_isolated:true,mode:'read-only',generated_at:stamp()});
+  }
+  if(path==='/api/united/tournaments'&&request.method==='GET'){
+   const d=await unitedPubg(env,'tournaments',true);
+   return J({tournaments:unitedTournamentSummary(d),raw_count:Array.isArray(d?.data)?d.data.length:0,generated_at:stamp()});
+  }
+  if(path==='/api/united/tournament'&&request.method==='GET'){
+   const id=String(url.searchParams.get('id')||'').trim();
+   if(!id||id.length>180||!/^[a-zA-Z0-9._:-]+$/.test(id))return J({error:'올바른 Tournament ID가 필요합니다'},400);
+   const d=await unitedPubg(env,'tournaments/'+encodeURIComponent(id),true);
+   const matches=(d?.data?.relationships?.matches?.data||[]).map(x=>x.id).filter(Boolean);
+   return J({id:d?.data?.id||id,createdAt:d?.data?.attributes?.createdAt||null,match_ids:matches,match_count:matches.length});
+  }
+  if(path==='/api/united/match'&&request.method==='GET'){
+   const id=String(url.searchParams.get('id')||'').trim();
+   if(!id||id.length>180||!/^[a-zA-Z0-9-]+$/.test(id))return J({error:'올바른 Match ID가 필요합니다'},400);
+   let d;try{d=await unitedPubg(env,'shards/tournament/matches/'+encodeURIComponent(id),false)}
+   catch(e){d=await unitedPubg(env,'shards/tournament/matches/'+encodeURIComponent(id),true)}
+   return J(unitedMatchSummary(d));
+  }
   if(path==='/api/soop/notices'&&request.method==='GET'){
    const config=await noticeConfig(env.DB);
    const posts=await env.DB.prepare('SELECT n.*,p.name FROM soop_notice_posts n LEFT JOIN players p ON p.id=n.player_id ORDER BY n.id DESC LIMIT 100').all();
@@ -759,6 +803,7 @@ export default {
    if(path==='/api/market/halt'){const halted=body.halted===true;await env.DB.prepare("INSERT INTO settings(k,v) VALUES('market_halt',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(halted?'1':'0').run();return J({ok:true,market_halted:halted});}
    if(path==='/api/settings'){const w=Number(body.rp_weight);if(!Number.isFinite(w)||w<0||w>100)throw Error('RP 비중은 0~100');await env.DB.prepare("INSERT INTO settings(k,v) VALUES('rp_weight',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(w)).run();return J({ok:true});}
   }
+  if(path==='/united-api')return env.ASSETS.fetch(new Request(new URL('/united-api.html',url),request));
   if(path==='/admin'||path==='/overlay')return env.ASSETS.fetch(new Request(new URL(`${path}.html`,url),request));
   return env.ASSETS.fetch(request);
  }catch(e){return J({error:String(e.message||e)},400);}
