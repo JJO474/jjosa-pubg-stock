@@ -170,7 +170,7 @@ async function calculateMatchEffects(db,p,input,config){
  // Compare only pre-existing completed match records; do not retroactively reprice peers.
  let rivalScore=null,dormantDays=null,eventPct=null;
  if(config.effects.rival.enabled){
-  const peers=await db.prepare('SELECT player,AVG(kills*0.8+damage/200.0) AS avg_score FROM (SELECT player,kills,damage,ROW_NUMBER() OVER(PARTITION BY player ORDER BY id DESC) AS rn FROM ticks WHERE kills IS NOT NULL AND player<>?) WHERE rn<=5 GROUP BY player HAVING COUNT(*)>=3 ORDER BY ABS(avg_score-?) ASC LIMIT 1').bind(p.id,Number(input.kills||0)*.8+Number(input.damage||0)/200).all();
+  const peers=await db.prepare('SELECT player,AVG(kills*0.8+damage/200.0) AS avg_score FROM (SELECT player,kills,damage,ROW_NUMBER() OVER(PARTITION BY player ORDER BY id DESC) AS rn FROM (SELECT player,kills,damage,id FROM ticks ORDER BY id DESC LIMIT 500) WHERE kills IS NOT NULL AND player<>?) WHERE rn<=5 GROUP BY player HAVING COUNT(*)>=3 ORDER BY ABS(avg_score-?) ASC LIMIT 1').bind(p.id,Number(input.kills||0)*.8+Number(input.damage||0)/200).all();
   const peer=peers.results[0];
   if(peer){const score=Number(input.kills||0)*.8+Number(input.damage||0)/200;rivalScore=score>Number(peer.avg_score)*1.2?.4:score<Number(peer.avg_score)*.8?-.4:0}
  }
@@ -189,10 +189,11 @@ async function pollPlayer(env,p,prefetched=null){
  const d=prefetched||await pubg(env,p.platform,`players/${encodeURIComponent(p.id)}`);
  const ids=(d.data?.relationships?.matches?.data||[]).map(x=>x.id).reverse();
  const unseen=[];
- for(const id of ids){if(!(await env.DB.prepare('SELECT 1 FROM processed WHERE player=? AND match_id=?').bind(p.id,id).first()))unseen.push(id);}
+ for(let i=0;i<ids.length;i+=80){const chunk=ids.slice(i,i+80);const seen=await env.DB.prepare('SELECT match_id FROM processed WHERE player=? AND match_id IN ('+chunk.map(()=>'?').join(',')+')').bind(p.id,...chunk).all();const set=new Set(seen.results.map(x=>x.match_id));for(const id of chunk)if(!set.has(id))unseen.push(id);}
  // A bounded batch is essential for free-tier CPU, external API limits and request duration.
  const batch=unseen.slice(0,2);let applied=0;const effectConfig=await getEffectConfig(env.DB);
  for(const id of batch){
+  if(await collectionOff(env))break;
   const m=await pubg(env,p.platform,`matches/${encodeURIComponent(id)}`);
   const attrs=m.data?.attributes||{};
   const stats=m.included?.filter(x=>x.type==='participant').map(x=>x.attributes?.stats).find(x=>x?.playerId===p.id);
@@ -243,7 +244,9 @@ async function pollPlayer(env,p,prefetched=null){
  }
  return {applied,remaining:Math.max(0,unseen.length-batch.length)};
 }
+async function collectionOff(env){const r=await env.DB.prepare("SELECT v FROM settings WHERE k='collection_off'").first();return r?.v==='1';}
 async function sync(env){
+ if(await collectionOff(env))return {skipped:'수집 OFF'};
  // Every five minutes, enqueue all listed players; a one-minute worker drains
  // the queue within the shared PUBG API request budget.
  const db=env.DB,now=Date.now(),cycle=Math.floor(now/300000);
@@ -316,7 +319,7 @@ async function candleData(db,id,period){
 async function marketAnalytics(db){
  const [players,ticks,vol]=await Promise.all([
  db.prepare('SELECT id,name,price,rp,platform,created FROM players ORDER BY id').all(),
- db.prepare('SELECT player,price,change_pct,kills,damage,rank,created,id FROM ticks ORDER BY id DESC LIMIT 12000').all(),
+ db.prepare('SELECT player,price,change_pct,kills,damage,rank,created,id FROM ticks ORDER BY id DESC LIMIT 1200').all(),
  db.prepare("SELECT player_id,SUM(quantity) AS volume,SUM(total) AS turnover FROM investor_trades WHERE created>=? GROUP BY player_id").bind(new Date(Date.now()-86400000).toISOString()).all()
  ]);
  const byPlayer=new Map(),vmap=new Map(vol.results.map(v=>[v.player_id,v]));
@@ -513,6 +516,7 @@ async function ingestNotice(db,bjId,postNo,title,url){
  return v;
 }
 async function scanNoticeBoards(env){
+ if(await collectionOff(env))return {skipped:'수집 OFF'};
  const db=env.DB,cfg=await noticeConfig(db);
  if(!cfg.auto_check)return {skipped:'자동 확인 OFF'};
  // The undocumented channel endpoint is NOT called without explicit operator confirmation
@@ -753,6 +757,7 @@ export default {
   if(path==='/api/leaderboard/steam'&&request.method==='GET'){
    try{return J(await steamTop100(env))}catch(e){return J({entries:[],error:String(e.message||e),region:'pc-as',mode:'squad-fpp'},503)}
   }
+  if(path==='/api/collection/status'&&request.method==='GET')return J({off:await collectionOff(env)});
   if(path==='/api/market/players'&&request.method==='GET'){
    try{
     const p=await env.DB.prepare('SELECT id,name,platform,price,rp FROM players ORDER BY price DESC').all();
@@ -764,7 +769,7 @@ export default {
    const [p,t,last,error,halt]=await Promise.all([env.DB.prepare('SELECT * FROM players ORDER BY price DESC').all(),env.DB.prepare('SELECT * FROM ticks ORDER BY id DESC LIMIT 250').all(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_finished'").first(),env.DB.prepare("SELECT v FROM meta WHERE k='sync_error'").first(),env.DB.prepare("SELECT v FROM settings WHERE k='market_halt'").first()]);
    const queue=await env.DB.prepare("SELECT name,q.status,q.last_checked,q.last_error,q.applied FROM sync_queue q JOIN players p ON p.id=q.player ORDER BY p.name").all().catch(()=>({results:[]}));
    const completed=queue.results.filter(x=>x.status==='done').length;
-   const rankRows=await env.DB.prepare("SELECT k,v FROM meta WHERE k LIKE 'rank_detail:%'").all().catch(()=>({results:[]}));
+   const rankRows=await env.DB.prepare("SELECT k,v FROM meta WHERE k >= 'rank_detail:' AND k < 'rank_detail;'").all().catch(()=>({results:[]}));
    const rankMap=new Map((rankRows.results||[]).flatMap(x=>{try{return [[x.k.slice(12),JSON.parse(x.v)]]}catch{return []}}));
    const rankedPlayers=p.results.filter(x=>x.rp!=null).slice().sort((a,b)=>Number(b.rp)-Number(a.rp));
    const rankPositions=new Map(rankedPlayers.map((x,i)=>[x.id,i+1]));
@@ -880,6 +885,7 @@ export default {
    if(path==='/api/sync')return J({ok:true,status:await sync(env)});
    if(path==='/api/delete'){await env.DB.prepare('DELETE FROM players WHERE id=?').bind(body.id).run();return J({ok:true});}
    if(path==='/api/market/notice'){await marketSchema(env.DB);const title=String(body.title||'').trim(),content=String(body.body||'').trim();if(!title||title.length>100||content.length>1000)throw Error('공시 제목(1~100자)과 내용(최대 1000자)을 입력하세요');await env.DB.prepare('INSERT INTO market_notices(created,title,body,category) VALUES(?,?,?,?)').bind(stamp(),title,content,'운영 공시').run();return J({ok:true});}
+   if(path==='/api/collection/toggle'){const off=body.off===true;await env.DB.prepare("INSERT INTO settings(k,v) VALUES('collection_off',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(off?'1':'0').run();return J({ok:true,off});}
    if(path==='/api/market/halt'){const halted=body.halted===true;await env.DB.prepare("INSERT INTO settings(k,v) VALUES('market_halt',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(halted?'1':'0').run();return J({ok:true,market_halted:halted});}
    if(path==='/api/settings'){const w=Number(body.rp_weight);if(!Number.isFinite(w)||w<0||w>100)throw Error('RP 비중은 0~100');await env.DB.prepare("INSERT INTO settings(k,v) VALUES('rp_weight',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").bind(String(w)).run();return J({ok:true});}
   }
