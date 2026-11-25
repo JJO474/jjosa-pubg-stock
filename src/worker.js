@@ -209,11 +209,20 @@ async function pollPlayer(env,p,prefetched=null){
    const pct=clamp(isRanked?perf*(1-Number(w?.v??50)/100):perf*0.5,-10,10);
    const effect=await calculateMatchEffects(env.DB,p,{base:pct,kills,damage,rank},effectConfig);
    const price=Math.max(100,Math.round(row.price*(1+effect.final_pct/100)));
+   const participants=(m.included||[]).filter(x=>x.type==='participant');
+   const own=participants.find(x=>x.attributes?.stats?.playerId===p.id);
+   const roster=(m.included||[]).find(x=>x.type==='roster'&&x.relationships?.participants?.data?.some(y=>y.id===own?.id));
+   const memberIds=roster?.relationships?.participants?.data?.map(y=>y.id)||[];
+   const teamDamage=memberIds.length>1?participants.filter(x=>memberIds.includes(x.id)).reduce((sum,x)=>sum+Number(x.attributes?.stats?.damageDealt||0),0):null;
+   const numeric=k=>stats[k]!=null&&Number.isFinite(Number(stats[k]))?Number(stats[k]):null;
+   const extra={assists:numeric('assists'),dbnos:numeric('DBNOs'),revives:numeric('revives'),survival_seconds:numeric('timeSurvived'),deaths:stats.deathType==='alive'?0:stats.deathType?1:null,team_damage:teamDamage};
+   
    await env.DB.batch([
     env.DB.prepare('INSERT OR IGNORE INTO ticks(player,match_id,created,price,change_pct,kills,damage,rank,reason) VALUES(?,?,?,?,?,?,?,?,?)').bind(p.id,id,attrs.createdAt||stamp(),price,effect.final_pct,kills,damage,rank,isRanked?'경쟁전 경기':'일반전 경기'),
     env.DB.prepare('UPDATE players SET price=?,updated=? WHERE id=?').bind(price,stamp(),p.id),
     env.DB.prepare('INSERT OR IGNORE INTO price_effect_events(player,match_id,created,base_pct,bonus_pct,final_pct,previous_price,new_price,details) VALUES(?,?,?,?,?,?,?,?,?)').bind(p.id,id,stamp(),pct,effect.bonus_pct,effect.final_pct,row.price,price,JSON.stringify(effect.details)),
-    env.DB.prepare('INSERT OR IGNORE INTO processed(player,match_id) VALUES(?,?)').bind(p.id,id)
+    env.DB.prepare('INSERT OR IGNORE INTO processed(player,match_id) VALUES(?,?)').bind(p.id,id),
+    env.DB.prepare('INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v').bind('match_stats:'+p.id+':'+id,JSON.stringify(extra))
    ]);applied++;
   }else await env.DB.prepare('INSERT OR IGNORE INTO processed(player,match_id) VALUES(?,?)').bind(p.id,id).run();
  }
@@ -767,7 +776,11 @@ export default {
    const id=url.searchParams.get('id')||'';if(!id||id.length>150)return J({error:'올바른 선수 ID가 필요합니다'},400);
    const p=await env.DB.prepare('SELECT id,name,platform,price,rp FROM players WHERE id=?').bind(id).first();if(!p)return J({error:'상장된 선수가 아닙니다'},404);
    const ticks=await env.DB.prepare('SELECT id,player,match_id,created,price,change_pct,kills,damage,rank,rp_delta,reason FROM ticks WHERE player=? ORDER BY id DESC LIMIT 300').bind(id).all();
-   return J({player:p,ticks:ticks.results});
+   const recent=ticks.results.filter(t=>t.kills!=null).slice(0,25);
+   const keys=recent.map(t=>'match_stats:'+id+':'+t.match_id);
+   const extras=keys.length?await env.DB.prepare('SELECT k,v FROM meta WHERE k IN ('+keys.map(()=>'?').join(',')+')').bind(...keys).all().catch(()=>({results:[]})):{results:[]};
+   const byKey=new Map(extras.results.map(x=>{try{return [x.k,JSON.parse(x.v)]}catch{return [x.k,{}]}}));
+   return J({player:p,ticks:ticks.results.map(t=>({...t,...(byKey.get('match_stats:'+id+':'+t.match_id)||{})}))});
   }
   if(path==='/api/market/overview'&&request.method==='GET'){
    const stats=await marketStats(env.DB);
